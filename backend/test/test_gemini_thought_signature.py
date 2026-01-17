@@ -125,11 +125,11 @@ async def test_basic_tool_call():
         for message in result.messages:
             print(f"{message.source}: {message.content}")
 
-        print("\n✅ TEST 1 PASSED - Single tool call successful")
+        print("\n[SUCCESS] TEST 1 PASSED - Single tool call successful")
         return True
 
     except Exception as e:
-        print(f"\n❌ TEST 1 FAILED - Error: {e}")
+        print(f"\n[FAILED] TEST 1 FAILED - Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -179,14 +179,14 @@ async def test_multiple_tool_calls():
         for message in result.messages:
             print(f"{message.source}: {message.content[:200]}...")
 
-        print("\n✅ TEST 2 PASSED - Multiple tool calls successful")
+        print("\n[SUCCESS] TEST 2 PASSED - Multiple tool calls successful")
         return True
 
     except Exception as e:
-        print(f"\n❌ TEST 2 FAILED - Error: {e}")
+        print(f"\n[FAILED] TEST 2 FAILED - Error: {e}")
         if "thought_signature" in str(e):
-            print("⚠️  This is the known thought_signature error!")
-            print("   The error occurred with multiple tool calls as expected.")
+            print("[WARNING] This is the known thought_signature error!")
+            print("The error occurred with multiple tool calls as expected.")
         import traceback
         traceback.print_exc()
         return False
@@ -231,13 +231,13 @@ async def test_conversation_with_tools():
         result2 = await team.run(task="Now calculate 100 + 250")
         print(f"Agent: {result2.messages[-1].content[:150]}...")
 
-        print("\n✅ TEST 3 PASSED - Multi-turn conversation successful")
+        print("\n[SUCCESS] TEST 3 PASSED - Multi-turn conversation successful")
         return True
 
     except Exception as e:
-        print(f"\n❌ TEST 3 FAILED - Error: {e}")
+        print(f"\n[FAILED] TEST 3 FAILED - Error: {e}")
         if "thought_signature" in str(e):
-            print("⚠️  thought_signature error in multi-turn conversation")
+            print("[WARNING] thought_signature error in multi-turn conversation")
         import traceback
         traceback.print_exc()
         return False
@@ -278,11 +278,11 @@ async def test_without_tools():
         print("\n--- RESULT ---")
         print(f"Agent: {result.messages[-1].content}")
 
-        print("\n✅ TEST 4 PASSED - Non-tool usage successful")
+        print("\n[SUCCESS] TEST 4 PASSED - Non-tool usage successful")
         return True
 
     except Exception as e:
-        print(f"\n❌ TEST 4 FAILED - Error: {e}")
+        print(f"\n[FAILED] TEST 4 FAILED - Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -314,10 +314,10 @@ async def main():
     print(f"\nTests Passed: {passed}/{total}")
 
     if passed == total:
-        print("\n🎉 ALL TESTS PASSED!")
-        print("✅ GeminiThoughtSignatureClient is working correctly")
+        print("\n[SUCCESS] ALL TESTS PASSED!")
+        print("GeminiThoughtSignatureClient is working correctly")
     else:
-        print(f"\n⚠️  {total - passed} test(s) failed")
+        print(f"\n[WARNING] {total - passed} test(s) failed")
         print("This may indicate thought_signature issues with multiple tool calls")
         print("Consider reducing max_tool_iterations or using fewer tools")
 
