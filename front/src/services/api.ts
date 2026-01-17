@@ -75,9 +75,17 @@ export interface UpdateFileRequest {
   filepath?: string; // Required for filesystem-based updates
 }
 
+export interface FileAttachment {
+  type: 'image' | 'pdf';
+  mime_type: string;
+  data: string;  // Base64 encoded
+  name: string;
+}
+
 export interface SendChatMessageRequest {
   message: string;
   session_id?: number;
+  attachments?: FileAttachment[];  // Multimodal support
 }
 
 export interface SendChatMessageResponse {

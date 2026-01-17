@@ -81,9 +81,18 @@ class ChatSessionWithMessages(ChatSession):
     messages: List[ChatMessage] = []
 
 
+class FileAttachment(BaseModel):
+    """Multimodal file attachment (image or PDF)"""
+    type: str  # "image" or "pdf"
+    mime_type: str
+    data: str  # Base64 encoded data
+    name: str
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[int] = None
+    attachments: Optional[List[FileAttachment]] = None  # Multimodal support
 
 
 class AgentInteraction(BaseModel):

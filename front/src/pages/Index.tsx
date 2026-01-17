@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, ArrowUp, Sparkles, Loader2 } from "lucide-react";
+import { Plus, ArrowUp, Sparkles, Loader2, Image as ImageIcon, FileText, X } from "lucide-react";
 import { useCreateProject } from "@/hooks/useProjects";
 import { useProjects } from "@/hooks/useProjects";
 import { useToast } from "@/hooks/use-toast";
@@ -10,12 +10,27 @@ import FeaturesSection from "@/components/FeaturesSection";
 import HowItWorksSection from "@/components/HowItWorksSection";
 import DocsSection from "@/components/DocsSection";
 
+interface FileAttachment {
+  id: string;
+  name: string;
+  type: 'image' | 'pdf';
+  mime_type: string;
+  size: number;
+  url?: string;
+  data?: string;
+}
+
 const Index = () => {
   const [message, setMessage] = useState("");
   const [showGallery, setShowGallery] = useState(false);
   const [displayedProjects, setDisplayedProjects] = useState(16);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const galleryRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const createProject = useCreateProject();
@@ -33,11 +48,178 @@ const Index = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [showGallery]);
 
+  // Close attach menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showAttachMenu) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('.attach-menu-container')) {
+          setShowAttachMenu(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAttachMenu]);
+
+  // Handle image selection
+  const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingFile(true);
+
+    try {
+      const newAttachments: FileAttachment[] = [];
+
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith('image/')) {
+          toast({
+            title: "Invalid file type",
+            description: `${file.name} is not an image`,
+            variant: "destructive"
+          });
+          continue;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+          toast({
+            title: "File too large",
+            description: `${file.name} exceeds 10MB`,
+            variant: "destructive"
+          });
+          continue;
+        }
+
+        const reader = new FileReader();
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const previewUrl = URL.createObjectURL(file);
+
+        newAttachments.push({
+          id: `${Date.now()}-${file.name}`,
+          name: file.name,
+          type: 'image',
+          mime_type: file.type,
+          size: file.size,
+          url: previewUrl,
+          data: base64Data
+        });
+      }
+
+      setAttachedFiles(prev => [...prev, ...newAttachments]);
+      setShowAttachMenu(false);
+      toast({
+        title: "Images attached",
+        description: `${newAttachments.length} image(s) ready`
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to process images",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploadingFile(false);
+      if (imageInputRef.current) {
+        imageInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle PDF selection
+  const handlePdfSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingFile(true);
+
+    try {
+      const newAttachments: FileAttachment[] = [];
+
+      for (const file of Array.from(files)) {
+        if (file.type !== 'application/pdf') {
+          toast({
+            title: "Invalid file type",
+            description: `${file.name} is not a PDF`,
+            variant: "destructive"
+          });
+          continue;
+        }
+
+        if (file.size > 20 * 1024 * 1024) {
+          toast({
+            title: "File too large",
+            description: `${file.name} exceeds 20MB`,
+            variant: "destructive"
+          });
+          continue;
+        }
+
+        const reader = new FileReader();
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        newAttachments.push({
+          id: `${Date.now()}-${file.name}`,
+          name: file.name,
+          type: 'pdf',
+          mime_type: 'application/pdf',
+          size: file.size,
+          data: base64Data
+        });
+      }
+
+      setAttachedFiles(prev => [...prev, ...newAttachments]);
+      setShowAttachMenu(false);
+      toast({
+        title: "PDFs attached",
+        description: `${newAttachments.length} PDF(s) ready`
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to process PDFs",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploadingFile(false);
+      if (pdfInputRef.current) {
+        pdfInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Remove attachment
+  const removeAttachment = (id: string) => {
+    setAttachedFiles(prev => {
+      const file = prev.find(f => f.id === id);
+      if (file?.url) {
+        URL.revokeObjectURL(file.url);
+      }
+      return prev.filter(f => f.id !== id);
+    });
+  };
+
   const handleSubmit = async () => {
-    if (!message.trim()) {
+    if (!message.trim() && attachedFiles.length === 0) {
       toast({
         title: "Empty message",
-        description: "Please describe what you want to build",
+        description: "Please describe what you want to build or attach files",
         variant: "destructive",
       });
       return;
@@ -50,6 +232,13 @@ const Index = () => {
     setIsSubmitting(true);
 
     try {
+      // Auto-enhance message if images are attached
+      let enhancedMessage = message;
+      const hasImages = attachedFiles.some(f => f.type === 'image');
+      if (hasImages && !message.toLowerCase().includes('ui') && !message.toLowerCase().includes('design')) {
+        enhancedMessage = `${message}\n\n[Note: The attached image(s) show a UI/UX design that should be converted to React code with Tailwind CSS.]`;
+      }
+
       // Call the new endpoint that uses AI to generate project metadata
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/projects/from-message`, {
         method: 'POST',
@@ -57,7 +246,13 @@ const Index = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: message.substring(0, 1000),
+          message: enhancedMessage.substring(0, 1000),
+          attachments: attachedFiles.length > 0 ? attachedFiles.map(file => ({
+            type: file.type,
+            mime_type: file.mime_type,
+            data: file.data,
+            name: file.name
+          })) : undefined,
         }),
       });
 
@@ -68,17 +263,32 @@ const Index = () => {
       const data = await response.json();
       const project = data.project;
       const initialMessage = data.initial_message;
+      const responseAttachments = data.attachments;
 
       toast({
         title: "Project created!",
         description: "Redirecting to editor...",
       });
 
-      // Navigate to editor with the initial message in state
+      // Clean up attached file URLs (but keep data for editor)
+      attachedFiles.forEach(file => {
+        if (file.url) {
+          URL.revokeObjectURL(file.url);
+        }
+      });
+
+      // Navigate to editor with the initial message and attachments in state
       setTimeout(() => {
         navigate(`/editor/${project.id}`, {
-          state: { initialMessage }
+          state: {
+            initialMessage,
+            attachments: responseAttachments
+          }
         });
+
+        // Clear state after navigation
+        setAttachedFiles([]);
+        setMessage('');
       }, 500);
     } catch (error) {
       toast({
@@ -144,19 +354,97 @@ const Index = () => {
 
             {/* Input Box */}
             <div className="w-full max-w-5xl mx-auto mb-8 animate-fade-in-up delay-300">
+              {/* File attachments preview */}
+              {attachedFiles.length > 0 && (
+                <div className="mb-4 flex flex-wrap gap-2 justify-center">
+                  {attachedFiles.map(file => (
+                    <div
+                      key={file.id}
+                      className="relative group bg-background/80 border border-border rounded-lg p-2 flex items-center gap-2 max-w-xs"
+                    >
+                      {file.type === 'image' && file.url ? (
+                        <img
+                          src={file.url}
+                          alt={file.name}
+                          className="w-12 h-12 object-cover rounded"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 flex items-center justify-center bg-muted/50 rounded">
+                          <FileText className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeAttachment(file.id)}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="glass rounded-3xl glow-accent flex items-start gap-4 p-6 hover:border-primary/50 transition-all">
-                <button
-                  className="w-11 h-11 rounded-full border border-border bg-background hover:bg-muted flex items-center justify-center transition-colors shrink-0 mt-1"
-                  onClick={() => {/* Add attachment functionality */}}
-                >
-                  <Plus className="w-6 h-6 text-muted-foreground" />
-                </button>
+                <div className="relative attach-menu-container">
+                  <button
+                    className="w-11 h-11 rounded-full border border-border bg-background hover:bg-muted flex items-center justify-center transition-colors shrink-0 mt-1"
+                    onClick={() => setShowAttachMenu(!showAttachMenu)}
+                    disabled={isSubmitting || isUploadingFile}
+                  >
+                    <Plus className="w-6 h-6 text-muted-foreground" />
+                  </button>
+
+                  {/* Attach menu */}
+                  {showAttachMenu && (
+                    <div className="absolute top-full left-0 mt-2 bg-background border border-border rounded-lg shadow-lg p-2 z-50 min-w-[160px]">
+                      <button
+                        onClick={() => imageInputRef.current?.click()}
+                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded text-sm transition-colors"
+                      >
+                        <ImageIcon className="w-4 h-4" />
+                        <span>Add images</span>
+                      </button>
+                      <button
+                        onClick={() => pdfInputRef.current?.click()}
+                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded text-sm transition-colors"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>Add PDF</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Hidden file inputs */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                    multiple
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <input
+                    ref={pdfInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    multiple
+                    onChange={handlePdfSelect}
+                    className="hidden"
+                  />
+                </div>
 
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Describe your project or ask anything..."
+                  placeholder={attachedFiles.length > 0 ? "Describe what you want to build with these files..." : "Describe your project or ask anything..."}
                   rows={4}
                   disabled={isSubmitting}
                   className="flex-1 bg-transparent border-none outline-none text-lg text-foreground placeholder:text-muted-foreground resize-none disabled:opacity-50 disabled:cursor-not-allowed"
@@ -167,7 +455,7 @@ const Index = () => {
 
                   <button
                     onClick={handleSubmit}
-                    disabled={!message.trim() || isSubmitting}
+                    disabled={(!message.trim() && attachedFiles.length === 0) || isSubmitting}
                     className="w-11 h-11 rounded-full bg-gradient-primary hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center transition-all glow-primary"
                   >
                     {isSubmitting ? (

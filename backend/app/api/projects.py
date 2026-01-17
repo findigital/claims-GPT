@@ -2,7 +2,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import httpx
 from autogen_core.models import SystemMessage, UserMessage
@@ -34,13 +34,23 @@ router = APIRouter()
 MOCK_USER_ID = 1
 
 
+class FileAttachmentForProject(BaseModel):
+    """Multimodal file attachment for project creation"""
+    type: str  # "image" or "pdf"
+    mime_type: str
+    data: str  # Base64 encoded data
+    name: str
+
+
 class ProjectFromMessageRequest(BaseModel):
     message: str
+    attachments: Optional[List[FileAttachmentForProject]] = None
 
 
 class ProjectFromMessageResponse(BaseModel):
     project: Project
     initial_message: str
+    attachments: Optional[List[FileAttachmentForProject]] = None
 
 
 @router.post("/from-message", response_model=ProjectFromMessageResponse, status_code=status.HTTP_201_CREATED)
@@ -109,7 +119,12 @@ Remember to return ONLY the JSON object, nothing else."""
 
     project = ProjectService.create_project(db, project_data, MOCK_USER_ID)
 
-    return ProjectFromMessageResponse(project=project, initial_message=user_message)
+    # Pass attachments through to response (for editor to use)
+    return ProjectFromMessageResponse(
+        project=project,
+        initial_message=user_message,
+        attachments=request.attachments
+    )
 
 
 @router.post("", response_model=Project, status_code=status.HTTP_201_CREATED)

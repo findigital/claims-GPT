@@ -1,4 +1,5 @@
 import asyncio
+from io import BytesIO
 import logging
 from datetime import datetime
 from typing import Dict, List
@@ -358,6 +359,27 @@ Please analyze the request, create a plan if needed, and implement the solution.
         else:
             session = ChatService.create_session(db, ChatSessionCreate(project_id=project_id))
 
+        # Process attachments if present
+        processed_attachments = []
+        if chat_request.attachments:
+            from app.utils.multimodal import process_attachment
+
+            for attachment in chat_request.attachments:
+                is_valid, error, processed_data, processed_mime = process_attachment(
+                    attachment.type, attachment.mime_type, attachment.data, attachment.name
+                )
+
+                if not is_valid:
+                    yield {"type": "error", "data": {"message": f"Invalid attachment {attachment.name}: {error}"}}
+                    return
+
+                processed_attachments.append({
+                    "type": attachment.type,
+                    "mime_type": processed_mime,
+                    "data": processed_data,
+                    "name": attachment.name
+                })
+
         # Save user message
         user_message = ChatService.add_message(
             db, ChatMessageCreate(session_id=session.id, role=MessageRole.USER, content=chat_request.message)
@@ -416,6 +438,27 @@ Please analyze the request, create a plan if needed, and implement the solution.
             try:
                 os.chdir(project_dir)
                 logger.info(f"📂 Changed working directory to: {project_dir}")
+
+                # Prepare multimodal content if attachments present
+                task_input = None  # Will be either string or MultiModalMessage
+
+                if processed_attachments:
+                    # Build multimodal message using AutoGen format
+                    from autogen_agentchat.messages import MultiModalMessage
+                    from autogen_core import Image as AGImage
+                    from PIL import Image
+                    import base64
+
+                    content_parts = []
+
+                    # Add images to content
+                    for attachment in processed_attachments:
+                        if attachment["type"] == "image":
+                            # Decode base64 to PIL Image
+                            img_data = base64.b64decode(attachment["data"])
+                            pil_img = Image.open(BytesIO(img_data))
+                            ag_image = AGImage(pil_img)
+                            content_parts.append(ag_image)
 
                 # Build task description with optimizations for first message
                 if is_first_message:
@@ -485,6 +528,19 @@ Project Context:
 IMPORTANT: You are working in the project directory. All file operations will be relative to this directory.
 Please analyze the request, create a plan if needed, and implement the solution."""
 
+                # Create multimodal message if attachments are present
+                if processed_attachments:
+                    from autogen_agentchat.messages import MultiModalMessage
+
+                    # Prepend text description
+                    content_parts.insert(0, task_description)
+
+                    # Create multimodal message
+                    task_input = MultiModalMessage(content=content_parts, source="User")
+                else:
+                    # Use simple text task
+                    task_input = task_description
+
                 logger.info("=" * 80)
                 logger.info("🤖 STARTING MULTI-AGENT TEAM EXECUTION (STREAMING)")
                 logger.info("=" * 80)
@@ -539,7 +595,7 @@ Please analyze the request, create a plan if needed, and implement the solution.
 
                 # Stream agent events in real-time
                 async for message in orchestrator.main_team.run_stream(
-                    task=task_description, cancellation_token=CancellationToken()
+                    task=task_input, cancellation_token=CancellationToken()
                 ):
                     event_type = type(message).__name__
                     msg_source = message.source if hasattr(message, "source") else "Unknown"

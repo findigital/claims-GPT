@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Send, Sparkles, User, Bot, Paperclip, Image, Loader2 } from 'lucide-react';
+import { Send, Sparkles, User, Bot, Paperclip, Image as ImageIcon, FileText, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChatSession, useChatSessions } from '@/hooks/useChat';
 import { chatApi } from '@/services/api';
@@ -24,12 +24,23 @@ interface AgentInteractionData {
   timestamp: string;
 }
 
+interface FileAttachment {
+  id: string;
+  name: string;
+  type: 'image' | 'pdf';
+  mime_type: string;
+  size: number;
+  url?: string;  // For preview/display
+  data?: string; // Base64 data for sending to backend
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   agent_interactions?: AgentInteractionData[];
+  attachments?: FileAttachment[];  // Support multimodal messages
 }
 
 const initialMessages: Message[] = [
@@ -56,7 +67,7 @@ interface ChatPanelProps {
 }
 
 export interface ChatPanelRef {
-  sendMessage: (message: string) => void;
+  sendMessage: (message: string, attachments?: FileAttachment[]) => void;
 }
 
 export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
@@ -77,9 +88,13 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
     const [currentSessionId, setCurrentSessionId] = useState<number | undefined>(sessionId);
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamInterrupted, setStreamInterrupted] = useState(false);
+    const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);  // Files to send
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    const pdfInputRef = useRef<HTMLInputElement>(null);
     const { toast } = useToast();
     const abortControllerRef = useRef<AbortController | null>(null);
     const pendingReloadRef = useRef<{ message: string } | null>(null);
@@ -109,7 +124,11 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
 
     // Expose sendMessage method to parent
     useImperativeHandle(ref, () => ({
-      sendMessage: (message: string) => {
+      sendMessage: (message: string, attachments?: FileAttachment[]) => {
+        // Set attachments if provided
+        if (attachments && attachments.length > 0) {
+          setAttachedFiles(attachments);
+        }
         handleSend(message);
       },
     }));
@@ -277,9 +296,172 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       }
     }, [shouldTriggerReload, isStreaming, onReloadPreview]);
 
+    // Handle image file selection
+    const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      setIsUploadingFile(true);
+
+      try {
+        const newAttachments: FileAttachment[] = [];
+
+        for (const file of Array.from(files)) {
+          // Validate image type
+          if (!file.type.startsWith('image/')) {
+            toast({
+              title: "Invalid file type",
+              description: `${file.name} is not an image file`,
+              variant: "destructive"
+            });
+            continue;
+          }
+
+          // Check file size (max 10MB)
+          if (file.size > 10 * 1024 * 1024) {
+            toast({
+              title: "File too large",
+              description: `${file.name} exceeds 10MB limit`,
+              variant: "destructive"
+            });
+            continue;
+          }
+
+          // Read file as base64
+          const reader = new FileReader();
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]); // Remove data:image/... prefix
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          // Create preview URL
+          const previewUrl = URL.createObjectURL(file);
+
+          newAttachments.push({
+            id: `${Date.now()}-${file.name}`,
+            name: file.name,
+            type: 'image',
+            mime_type: file.type,
+            size: file.size,
+            url: previewUrl,
+            data: base64Data
+          });
+        }
+
+        setAttachedFiles(prev => [...prev, ...newAttachments]);
+        toast({
+          title: "Images attached",
+          description: `${newAttachments.length} image(s) ready to send`
+        });
+      } catch (error) {
+        console.error('[ChatPanel] Error processing images:', error);
+        toast({
+          title: "Error",
+          description: "Failed to process images",
+          variant: "destructive"
+        });
+      } finally {
+        setIsUploadingFile(false);
+        // Reset input
+        if (imageInputRef.current) {
+          imageInputRef.current.value = '';
+        }
+      }
+    };
+
+    // Handle PDF file selection
+    const handlePdfSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      setIsUploadingFile(true);
+
+      try {
+        const newAttachments: FileAttachment[] = [];
+
+        for (const file of Array.from(files)) {
+          // Validate PDF type
+          if (file.type !== 'application/pdf') {
+            toast({
+              title: "Invalid file type",
+              description: `${file.name} is not a PDF file`,
+              variant: "destructive"
+            });
+            continue;
+          }
+
+          // Check file size (max 20MB for PDFs)
+          if (file.size > 20 * 1024 * 1024) {
+            toast({
+              title: "File too large",
+              description: `${file.name} exceeds 20MB limit`,
+              variant: "destructive"
+            });
+            continue;
+          }
+
+          // Read file as base64
+          const reader = new FileReader();
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]); // Remove data:application/pdf;... prefix
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          newAttachments.push({
+            id: `${Date.now()}-${file.name}`,
+            name: file.name,
+            type: 'pdf',
+            mime_type: 'application/pdf',
+            size: file.size,
+            data: base64Data
+          });
+        }
+
+        setAttachedFiles(prev => [...prev, ...newAttachments]);
+        toast({
+          title: "PDFs attached",
+          description: `${newAttachments.length} PDF(s) ready to send`
+        });
+      } catch (error) {
+        console.error('[ChatPanel] Error processing PDFs:', error);
+        toast({
+          title: "Error",
+          description: "Failed to process PDFs",
+          variant: "destructive"
+        });
+      } finally {
+        setIsUploadingFile(false);
+        // Reset input
+        if (pdfInputRef.current) {
+          pdfInputRef.current.value = '';
+        }
+      }
+    };
+
+    // Remove attached file
+    const removeAttachment = (id: string) => {
+      setAttachedFiles(prev => {
+        const file = prev.find(f => f.id === id);
+        // Revoke object URL to free memory
+        if (file?.url) {
+          URL.revokeObjectURL(file.url);
+        }
+        return prev.filter(f => f.id !== id);
+      });
+    };
+
     const handleSend = async (messageOverride?: string) => {
-      const messageContent = messageOverride || input;
-      if (!messageContent.trim() || isStreaming) return;
+      let messageContent = messageOverride || input;
+      if (!messageContent.trim() && attachedFiles.length === 0) return;
+      if (isStreaming) return;
 
       if (!messageOverride) {
         setInput('');
@@ -294,12 +476,19 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       // Create AbortController for this request
       abortControllerRef.current = new AbortController();
 
+      // Auto-enhance message if images are attached
+      const hasImages = attachedFiles.some(f => f.type === 'image');
+      if (hasImages && !messageContent.toLowerCase().includes('ui') && !messageContent.toLowerCase().includes('design')) {
+        messageContent = `${messageContent}\n\n[Note: The attached image(s) show a UI/UX design that should be converted to React code with Tailwind CSS. Analyze the design, layout, colors, typography, and components shown in the image(s).]`;
+      }
+
       // Create both messages at once to avoid race conditions
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
         content: messageContent,
         timestamp: new Date(),
+        attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined,
       };
 
       const streamingMessageId = (Date.now() + 1).toString();
@@ -332,6 +521,12 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
           {
             message: messageContent,
             session_id: currentSessionId,
+            attachments: attachedFiles.length > 0 ? attachedFiles.map(file => ({
+              type: file.type,
+              mime_type: file.mime_type,
+              data: file.data,
+              name: file.name
+            })) : undefined,
           },
           {
             onStart: (data) => {
@@ -528,6 +723,17 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
               // WebContainer reload is now handled by onFilesReady callback
               // which waits for files to actually arrive before triggering reload
               console.log('[ChatPanel] Stream complete - WebContainer reload will be triggered by onFilesReady');
+
+              // Clear attached files after successful send
+              setAttachedFiles(prev => {
+                // Revoke object URLs to free memory
+                prev.forEach(file => {
+                  if (file.url) {
+                    URL.revokeObjectURL(file.url);
+                  }
+                });
+                return [];
+              });
             },
             onError: (error) => {
               console.error('Streaming error:', error);
@@ -543,6 +749,16 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                 )
               );
               setIsStreaming(false);
+
+              // Clear attached files on error
+              setAttachedFiles(prev => {
+                prev.forEach(file => {
+                  if (file.url) {
+                    URL.revokeObjectURL(file.url);
+                  }
+                });
+                return [];
+              });
             },
           }
         );
@@ -560,6 +776,16 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
           )
         );
         setIsStreaming(false);
+
+        // Clear attached files on error
+        setAttachedFiles(prev => {
+          prev.forEach(file => {
+            if (file.url) {
+              URL.revokeObjectURL(file.url);
+            }
+          });
+          return [];
+        });
       }
     };
 
@@ -832,7 +1058,30 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                           )}
                         </>
                       ) : (
-                        message.content
+                        <>
+                          {/* User message attachments */}
+                          {message.attachments && message.attachments.length > 0 && (
+                            <div className="mb-2 space-y-2">
+                              {message.attachments.map((file, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                  {file.type === 'image' && file.url ? (
+                                    <img
+                                      src={file.url}
+                                      alt={file.name}
+                                      className="max-w-[200px] max-h-[200px] rounded border border-primary/20"
+                                    />
+                                  ) : (
+                                    <div className="flex items-center gap-2 bg-primary-foreground/10 px-3 py-2 rounded border border-primary/20">
+                                      <FileText className="w-4 h-4" />
+                                      <span className="text-xs">{file.name}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {message.content}
+                        </>
                       )}
                     </div>
                     <span className="text-[10px] text-muted-foreground/60 px-1">
@@ -877,6 +1126,43 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
 
             {/* Input */}
             <div className="p-4 border-t border-border/50">
+              {/* File attachments preview */}
+              {attachedFiles.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {attachedFiles.map(file => (
+                    <div
+                      key={file.id}
+                      className="relative group bg-muted/30 border border-border/50 rounded-lg p-2 flex items-center gap-2 max-w-xs"
+                    >
+                      {file.type === 'image' && file.url ? (
+                        <img
+                          src={file.url}
+                          alt={file.name}
+                          className="w-12 h-12 object-cover rounded"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 flex items-center justify-center bg-muted/50 rounded">
+                          <FileText className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeAttachment(file.id)}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="flex items-end gap-2">
                 <div className="flex-1 relative">
                   <textarea
@@ -889,31 +1175,53 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                         handleSend();
                       }
                     }}
-                    placeholder="Describe what you want to create..."
+                    placeholder={attachedFiles.length > 0 ? "Add a message about the attached files..." : "Describe what you want to create..."}
                     className="w-full bg-muted/20 border border-border/30 rounded-xl px-4 py-3 pr-20
                                text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50
                                placeholder:text-muted-foreground min-h-[48px] max-h-32 transition-all"
                     rows={1}
                     disabled={isStreaming}
                   />
+                  {/* Hidden file inputs */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                    multiple
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <input
+                    ref={pdfInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    multiple
+                    onChange={handlePdfSelect}
+                    className="hidden"
+                  />
+
                   <div className="absolute right-2 bottom-2 flex items-center gap-1">
                     <button
-                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted/30"
-                      title="Attach file"
+                      onClick={() => pdfInputRef.current?.click()}
+                      disabled={isStreaming || isUploadingFile}
+                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted/30 disabled:opacity-50"
+                      title="Attach PDF"
                     >
-                      <Paperclip className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
                     </button>
                     <button
-                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted/30"
-                      title="Add image"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={isStreaming || isUploadingFile}
+                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted/30 disabled:opacity-50"
+                      title="Add images (UI/UX designs)"
                     >
-                      <Image className="w-4 h-4" />
+                      <ImageIcon className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
                 <Button
                   onClick={() => handleSend()}
-                  disabled={!input.trim() || isStreaming}
+                  disabled={(!input.trim() && attachedFiles.length === 0) || isStreaming}
                   className="h-12 w-12 rounded-xl bg-primary hover:bg-primary/90 p-0 shrink-0"
                 >
                   {isStreaming ? (

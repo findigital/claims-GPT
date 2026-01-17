@@ -122,16 +122,21 @@ const Editor = () => {
 
   // Auto-send initial message if provided from homepage (ONE-TIME ONLY)
   useEffect(() => {
-    const initialMessage = (location.state as { initialMessage?: string })?.initialMessage;
+    const state = location.state as { initialMessage?: string; attachments?: any[] };
+    const initialMessage = state?.initialMessage;
+    const attachments = state?.attachments;
 
     if (initialMessage && !initialMessageSent) {
       console.log('[Editor] Initial message detected:', initialMessage);
+      if (attachments) {
+        console.log('[Editor] Attachments detected:', attachments.length);
+      }
 
       // Wait for chat panel to be fully ready
       const timer = setTimeout(() => {
         if (chatPanelRef.current) {
           console.log('[Editor] Sending initial message to chat panel');
-          chatPanelRef.current.sendMessage(initialMessage);
+          chatPanelRef.current.sendMessage(initialMessage, attachments);
           setInitialMessageSent(true);
 
           // IMPORTANT: Clear location state to prevent re-sending on page reload

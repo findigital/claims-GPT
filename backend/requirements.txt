@@ -33,5 +33,8 @@ PyYAML
 beautifulsoup4==4.12.3
 pathspec
 
+# Image processing (for multimodal)
+Pillow==11.0.0
+
 # Screenshot capture
 playwright==1.48.0
