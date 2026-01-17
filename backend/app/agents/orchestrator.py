@@ -15,7 +15,7 @@ from app.agents.prompts import (
     PLANNING_AGENT_DESCRIPTION,
     PLANNING_AGENT_SYSTEM_MESSAGE,
 )
-from app.core.gemini_client import Gemini3FlashChatCompletionClient
+from app.core.gemini_thought_signature_client import GeminiThoughtSignatureClient
 from app.agents.tools import (
     csv_info,
     delete_file,
@@ -79,11 +79,11 @@ class AgentOrchestrator:
             run_terminal_cmd,
         ]
 
-        # Create Gemini-3 Flash client
-        # NOTE: Using OpenAI-compatible API. There's a known issue with thought_signature
-        # when using many sequential tool calls. We mitigate this with max_tool_iterations=5
+        # Create Gemini client with thought_signature handling
+        # This client extends BaseOpenAIChatCompletionClient and provides better
+        # error handling for thought_signature issues
         # Gemini-3 Flash Preview: 1M input tokens, 64K output tokens
-        self.model_client = Gemini3FlashChatCompletionClient(
+        self.model_client = GeminiThoughtSignatureClient(
             temperature=0.7,
             max_tokens=64000,  # Gemini-3 Flash max output: 64K tokens
         )
@@ -98,7 +98,7 @@ class AgentOrchestrator:
             system_message=AGENT_SYSTEM_PROMPT,
             model_client=self.model_client,
             tools=self.coder_tools,  # Includes memory RAG tools
-            max_tool_iterations=15,
+            max_tool_iterations=3,  # Low limit to avoid Gemini thought_signature errors
             reflect_on_tool_use=False,
             model_context=coder_context,  # Limit context to prevent token overflow
         )
