@@ -460,32 +460,22 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                 duration: 3000,
               });
 
-              // FIX: Trigger reload immediately (with short delay) 
-              // We trust 'files_ready' (which usually comes before) has handled content updates.
-              // Waiting for it creates a race condition where reload never happens.
+              // OPTIMIZED: Single reload after files are ready
+              // We trust 'files_ready' event has already pushed file updates via applyFileUpdates
+              // A single reload ensures WebContainer reflects the latest changes
 
               if (onReloadPreview && !reloadScheduledRef.current) {
-                console.log('[ChatPanel] 🔄 Triggering DOUBLE WebContainer reload strategy...');
-                reloadScheduledRef.current = true; // Prevent other events from interfering
+                console.log('[ChatPanel] 🔄 Scheduling single WebContainer reload...');
+                reloadScheduledRef.current = true;
 
-                const triggerReload = () => {
+                // Single reload: Wait for FS to settle (2.5s is sufficient)
+                setTimeout(() => {
+                  console.log('[ChatPanel] 🔄 Executing WebContainer reload...');
                   if (onReloadPreview) {
                     onReloadPreview(data);
                   }
-                };
-
-                // First reload: Wait longer for FS to settle (2.5s)
-                setTimeout(() => {
-                  console.log('[ChatPanel] 🔄 executing FIRST reload...');
-                  triggerReload();
+                  reloadScheduledRef.current = false;
                 }, 2500);
-
-                // Second reload: Safety check (6.0s) to ensure everything is caught
-                setTimeout(() => {
-                  console.log('[ChatPanel] 🔄 executing SECOND reload (final consistency check)...');
-                  triggerReload();
-                  reloadScheduledRef.current = false; // Reset flag after final reload
-                }, 6000);
               }
             },
             onComplete: (data) => {

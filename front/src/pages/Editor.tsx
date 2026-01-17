@@ -197,9 +197,9 @@ const Editor = () => {
       setSelectedFile({ ...selectedFile, content: editedContent });
       setHasUnsavedChanges(false);
 
-      // Reload WebContainer to reflect changes
+      // Reload WebContainer to reflect manual changes
       if (previewPanelRef.current) {
-        previewPanelRef.current.reload();
+        previewPanelRef.current.handleRefresh();
       }
 
       toast({
@@ -252,8 +252,10 @@ const Editor = () => {
   };
 
   const handleRunProject = () => {
-    // Trigger a reload of the preview to run the project
-    handleCodeChange();
+    // Just refresh the preview - no need to save if nothing changed
+    if (previewPanelRef.current) {
+      previewPanelRef.current.handleRefresh();
+    }
     toast({
       title: "Running project",
       description: "Reloading preview to run the latest code...",
@@ -384,9 +386,9 @@ const Editor = () => {
       queryClient.invalidateQueries({ queryKey: ['project', Number(projectId)] });
     }
 
-    // Trigger WebContainer reload via ref
+    // Use handleRefresh for proper WebContainer reload
     if (previewPanelRef.current) {
-      previewPanelRef.current.reload();
+      previewPanelRef.current.handleRefresh();
     }
   };
 

@@ -51,6 +51,7 @@ interface ConsoleLog {
 
 export interface PreviewPanelRef {
   reload: () => void;
+  handleRefresh: () => void;  // Preferred method for refreshing WebContainer
   updateStyle: (property: string, value: string) => void;
   captureAndSendScreenshot: () => Promise<boolean>;
   applyFileUpdates: (files: Array<{ path: string, content: string }>) => Promise<void>;
@@ -334,18 +335,21 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
       }
     };
 
-    // Expose reload method to parent via ref (uses lightweight reload)
+    // Define handleRefresh first so it can be referenced
+    const handleRefresh = () => {
+      if (onReload) {
+        onReload();
+      }
+      initializeWebContainer();
+    };
+
+    // Expose methods to parent via ref
     useImperativeHandle(ref, () => ({
       reload: async () => {
-        if (onReload) {
-          onReload();
-        }
-        // User requested full refresh via handleRefresh logic to resolve import errors
-        // This is a "heavy" reload that ensures a clean state
-        await initializeWebContainer();
+        // Lightweight reload - just reinitialize WebContainer
+        handleRefresh();
 
         // After reload, re-apply visual mode if it's enabled
-        // Wait a bit longer to ensure iframe processed the file updates
         setTimeout(() => {
           if (iframeRef.current?.contentWindow && isVisualMode) {
             console.log('[PreviewPanel] Re-enabling visual mode after reload');
@@ -354,8 +358,9 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
               enabled: true
             }, '*');
           }
-        }, 2000); // Increased delay for full reload
+        }, 2000);
       },
+      handleRefresh,  // Expose handleRefresh directly
       updateStyle: (property: string, value: string) => {
         if (!iframeRef.current?.contentWindow) return;
         iframeRef.current.contentWindow.postMessage({
@@ -397,13 +402,6 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
         }
       }
     }));
-
-    const handleRefresh = () => {
-      if (onReload) {
-        onReload();
-      }
-      initializeWebContainer();
-    };
 
     const getLogIcon = (type: ConsoleLog['type']) => {
       switch (type) {
