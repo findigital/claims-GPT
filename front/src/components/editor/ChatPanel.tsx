@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Send, Sparkles, User, Bot, Paperclip, Image, Loader2 } from 'lucide-react';
+import { Send, Sparkles, User, Bot, Paperclip, Image as ImageIcon, FileText, X, Loader2, GitCommit, Undo2, Camera, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useChatSession, useChatSessions } from '@/hooks/useChat';
 import { chatApi } from '@/services/api';
 import ReactMarkdown from 'react-markdown';
@@ -24,12 +25,31 @@ interface AgentInteractionData {
   timestamp: string;
 }
 
+interface FileAttachment {
+  id: string;
+  name: string;
+  type: 'image' | 'pdf';
+  mime_type: string;
+  size: number;
+  url?: string;  // For preview/display
+  data?: string; // Base64 data for sending to backend
+}
+
+interface GitCommitData {
+  success: boolean;
+  message: string;
+  commit_hash?: string;
+  commit_count?: number;
+}
+
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
   agent_interactions?: AgentInteractionData[];
+  attachments?: FileAttachment[];  // Support multimodal messages
+  git_commit?: GitCommitData;  // Git commit information
 }
 
 const initialMessages: Message[] = [
@@ -56,7 +76,7 @@ interface ChatPanelProps {
 }
 
 export interface ChatPanelRef {
-  sendMessage: (message: string) => void;
+  sendMessage: (message: string, attachments?: FileAttachment[]) => void;
 }
 
 export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
@@ -77,9 +97,13 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
     const [currentSessionId, setCurrentSessionId] = useState<number | undefined>(sessionId);
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamInterrupted, setStreamInterrupted] = useState(false);
+    const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);  // Files to send
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    const pdfInputRef = useRef<HTMLInputElement>(null);
     const { toast } = useToast();
     const abortControllerRef = useRef<AbortController | null>(null);
     const pendingReloadRef = useRef<{ message: string } | null>(null);
@@ -109,8 +133,10 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
 
     // Expose sendMessage method to parent
     useImperativeHandle(ref, () => ({
-      sendMessage: (message: string) => {
-        handleSend(message);
+      sendMessage: (message: string, attachments?: FileAttachment[]) => {
+        // Pass attachments directly to handleSend (don't use setState)
+        // This avoids React state timing issues where setState is async
+        handleSend(message, attachments);
       },
     }));
 
@@ -122,31 +148,82 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       scrollToBottom();
     }, [messages]);
 
-    // Load messages from session (only on initial load, not during streaming)
+    // Load messages from session and git commits (only on initial load, not during streaming)
     useEffect(() => {
-      if (session?.messages && !isStreaming) {
-        const loadedMessages: Message[] = session.messages.map((msg) => ({
-          id: msg.id.toString(),
-          role: msg.role,
-          content: msg.content,
-          timestamp: new Date(msg.created_at),
-          agent_interactions: msg.agent_interactions || [],
-        }));
+      const loadMessagesAndCommits = async () => {
+        if (session?.messages && !isStreaming) {
+          const loadedMessages: Message[] = session.messages.map((msg) => ({
+            id: msg.id.toString(),
+            role: msg.role,
+            content: msg.content,
+            timestamp: new Date(msg.created_at),
+            agent_interactions: msg.agent_interactions || [],
+            attachments: msg.attachments || [],
+          }));
 
-        // CRITICAL: Only reload if we don't have more messages locally
-        // This prevents overwriting local state with stale server data
-        const serverMessageCount = loadedMessages.length;
-        const localMessageCount = messages.length - initialMessages.length; // Exclude initial message
+          // Load git commits and convert them to system messages
+          try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/projects/${projectId}/git/history?limit=100`);
+            if (response.ok) {
+              const commits = await response.json();
 
-        if (serverMessageCount > localMessageCount) {
-          console.log('[ChatPanel] Loading messages from session (server has more messages)');
-          setMessages([...initialMessages, ...loadedMessages]);
-        } else {
-          console.log('[ChatPanel] Skipping message reload - local state is up to date');
-          console.log(`  Server: ${serverMessageCount} messages, Local: ${localMessageCount} messages`);
+              // Convert ALL commits to system messages (we'll show them all in chronological order)
+              const commitMessages: Message[] = commits.commits.map((commit: any) => ({
+                id: `commit-${commit.hash}`,
+                role: 'system' as const,
+                content: commit.message.split('\n')[0], // First line of commit message
+                timestamp: new Date(commit.date),
+                git_commit: {
+                  success: true,
+                  message: commit.message.split('\n')[0],
+                  commit_hash: commit.hash,
+                  commit_count: commits.total_commits,
+                },
+              }));
+
+              // Merge messages and commits, sort by timestamp
+              const allMessages = [...loadedMessages, ...commitMessages].sort(
+                (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+              );
+
+              // CRITICAL: Only reload if we don't have more messages locally
+              // This prevents overwriting local state with stale server data
+              const serverMessageCount = allMessages.length;
+              const localMessageCount = messages.length - initialMessages.length; // Exclude initial message
+
+              if (serverMessageCount > localMessageCount) {
+                console.log('[ChatPanel] Loading messages and commits from session (server has more)');
+                // If we have no messages yet, show initial message, otherwise show sorted history
+                if (allMessages.length === 0) {
+                  setMessages(initialMessages);
+                } else {
+                  setMessages(allMessages);
+                }
+              } else {
+                console.log('[ChatPanel] Skipping message reload - local state is up to date');
+                console.log(`  Server: ${serverMessageCount} messages, Local: ${localMessageCount} messages`);
+              }
+            }
+          } catch (error) {
+            console.error('[ChatPanel] Failed to load git commits:', error);
+            // Fallback: just load messages without commits
+            const serverMessageCount = loadedMessages.length;
+            const localMessageCount = messages.length - initialMessages.length;
+
+            if (serverMessageCount > localMessageCount) {
+              console.log('[ChatPanel] Loading messages from session (without commits)');
+              if (loadedMessages.length === 0) {
+                setMessages(initialMessages);
+              } else {
+                setMessages(loadedMessages);
+              }
+            }
+          }
         }
-      }
-    }, [session, isStreaming, messages.length]);
+      };
+
+      loadMessagesAndCommits();
+    }, [session, isStreaming, messages.length, projectId]);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -277,9 +354,175 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       }
     }, [shouldTriggerReload, isStreaming, onReloadPreview]);
 
-    const handleSend = async (messageOverride?: string) => {
-      const messageContent = messageOverride || input;
-      if (!messageContent.trim() || isStreaming) return;
+    // Handle image file selection
+    const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      setIsUploadingFile(true);
+
+      try {
+        const newAttachments: FileAttachment[] = [];
+
+        for (const file of Array.from(files)) {
+          // Validate image type
+          if (!file.type.startsWith('image/')) {
+            toast({
+              title: "Invalid file type",
+              description: `${file.name} is not an image file`,
+              variant: "destructive"
+            });
+            continue;
+          }
+
+          // Check file size (max 10MB)
+          if (file.size > 10 * 1024 * 1024) {
+            toast({
+              title: "File too large",
+              description: `${file.name} exceeds 10MB limit`,
+              variant: "destructive"
+            });
+            continue;
+          }
+
+          // Read file as base64
+          const reader = new FileReader();
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]); // Remove data:image/... prefix
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          // Create preview URL
+          const previewUrl = URL.createObjectURL(file);
+
+          newAttachments.push({
+            id: `${Date.now()}-${file.name}`,
+            name: file.name,
+            type: 'image',
+            mime_type: file.type,
+            size: file.size,
+            url: previewUrl,
+            data: base64Data
+          });
+        }
+
+        setAttachedFiles(prev => [...prev, ...newAttachments]);
+        toast({
+          title: "Images attached",
+          description: `${newAttachments.length} image(s) ready to send`
+        });
+      } catch (error) {
+        console.error('[ChatPanel] Error processing images:', error);
+        toast({
+          title: "Error",
+          description: "Failed to process images",
+          variant: "destructive"
+        });
+      } finally {
+        setIsUploadingFile(false);
+        // Reset input
+        if (imageInputRef.current) {
+          imageInputRef.current.value = '';
+        }
+      }
+    };
+
+    // Handle PDF file selection
+    const handlePdfSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      setIsUploadingFile(true);
+
+      try {
+        const newAttachments: FileAttachment[] = [];
+
+        for (const file of Array.from(files)) {
+          // Validate PDF type
+          if (file.type !== 'application/pdf') {
+            toast({
+              title: "Invalid file type",
+              description: `${file.name} is not a PDF file`,
+              variant: "destructive"
+            });
+            continue;
+          }
+
+          // Check file size (max 20MB for PDFs)
+          if (file.size > 20 * 1024 * 1024) {
+            toast({
+              title: "File too large",
+              description: `${file.name} exceeds 20MB limit`,
+              variant: "destructive"
+            });
+            continue;
+          }
+
+          // Read file as base64
+          const reader = new FileReader();
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]); // Remove data:application/pdf;... prefix
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          newAttachments.push({
+            id: `${Date.now()}-${file.name}`,
+            name: file.name,
+            type: 'pdf',
+            mime_type: 'application/pdf',
+            size: file.size,
+            data: base64Data
+          });
+        }
+
+        setAttachedFiles(prev => [...prev, ...newAttachments]);
+        toast({
+          title: "PDFs attached",
+          description: `${newAttachments.length} PDF(s) ready to send`
+        });
+      } catch (error) {
+        console.error('[ChatPanel] Error processing PDFs:', error);
+        toast({
+          title: "Error",
+          description: "Failed to process PDFs",
+          variant: "destructive"
+        });
+      } finally {
+        setIsUploadingFile(false);
+        // Reset input
+        if (pdfInputRef.current) {
+          pdfInputRef.current.value = '';
+        }
+      }
+    };
+
+    // Remove attached file
+    const removeAttachment = (id: string) => {
+      setAttachedFiles(prev => {
+        const file = prev.find(f => f.id === id);
+        // Revoke object URL to free memory
+        if (file?.url) {
+          URL.revokeObjectURL(file.url);
+        }
+        return prev.filter(f => f.id !== id);
+      });
+    };
+
+    const handleSend = async (messageOverride?: string, attachmentsOverride?: FileAttachment[]) => {
+      let messageContent = messageOverride || input;
+      // Use provided attachments or current state
+      const filesToSend = attachmentsOverride || attachedFiles;
+
+      if (!messageContent.trim() && filesToSend.length === 0) return;
+      if (isStreaming) return;
 
       if (!messageOverride) {
         setInput('');
@@ -294,12 +537,19 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       // Create AbortController for this request
       abortControllerRef.current = new AbortController();
 
+      // Auto-enhance message if images are attached
+      const hasImages = filesToSend.some(f => f.type === 'image');
+      if (hasImages && !messageContent.toLowerCase().includes('ui') && !messageContent.toLowerCase().includes('design')) {
+        messageContent = `${messageContent}\n\n[Note: The attached image(s) show a UI/UX design that should be converted to React code with Tailwind CSS. Analyze the design, layout, colors, typography, and components shown in the image(s).]`;
+      }
+
       // Create both messages at once to avoid race conditions
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
         content: messageContent,
         timestamp: new Date(),
+        attachments: filesToSend.length > 0 ? [...filesToSend] : undefined,
       };
 
       const streamingMessageId = (Date.now() + 1).toString();
@@ -327,11 +577,47 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       });
 
       try {
+        // Log what we're sending
+        console.log('[ChatPanel] Sending message with attachments:', {
+          messageLength: messageContent.length,
+          attachmentCount: filesToSend.length,
+          attachments: filesToSend.map(f => ({
+            name: f.name,
+            type: f.type,
+            dataLength: f.data?.length || 0
+          }))
+        });
+
+        // Check total payload size (rough estimate)
+        const payloadSize = JSON.stringify({
+          message: messageContent,
+          session_id: currentSessionId,
+          attachments: filesToSend
+        }).length;
+
+        console.log('[ChatPanel] Estimated payload size:', (payloadSize / 1024 / 1024).toFixed(2), 'MB');
+
+        if (payloadSize > 50 * 1024 * 1024) { // 50MB limit
+          toast({
+            title: "Request too large",
+            description: "The attached files are too large. Please use smaller images.",
+            variant: "destructive"
+          });
+          setIsStreaming(false);
+          return;
+        }
+
         await chatApi.sendMessageStream(
           projectId,
           {
             message: messageContent,
             session_id: currentSessionId,
+            attachments: filesToSend.length > 0 ? filesToSend.map(file => ({
+              type: file.type,
+              mime_type: file.mime_type,
+              data: file.data,
+              name: file.name
+            })) : undefined,
           },
           {
             onStart: (data) => {
@@ -435,18 +721,33 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
             onGitCommit: (data) => {
               console.log('[ChatPanel] Git commit event:', data);
 
-              if (data.success) {
+              if (data.success && data.commit_hash) {
+                // Add commit message to chat
+                const commitMessage: Message = {
+                  id: `commit-${Date.now()}`,
+                  role: 'system',
+                  content: data.message || 'Changes committed',
+                  timestamp: new Date(),
+                  git_commit: {
+                    success: true,
+                    message: data.message || 'Changes committed',
+                    commit_hash: data.commit_hash,
+                    commit_count: data.commit_count
+                  }
+                };
+
+                setMessages((prev) => [...prev, commitMessage]);
+
                 toast({
-                  title: "Git Commit Created",
+                  title: "✅ Git Commit Created",
                   description: data.message || "Changes have been committed to git.",
                   duration: 3000,
                 });
-              } else {
+              } else if (!data.success) {
                 toast({
-                  title: "Git Commit Failed",
-                  description: data.error || "Failed to create git commit.",
-                  variant: "destructive",
-                  duration: 5000,
+                  title: "Git Commit",
+                  description: data.message || "No changes to commit",
+                  duration: 2000,
                 });
               }
             },
@@ -460,32 +761,22 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                 duration: 3000,
               });
 
-              // FIX: Trigger reload immediately (with short delay) 
-              // We trust 'files_ready' (which usually comes before) has handled content updates.
-              // Waiting for it creates a race condition where reload never happens.
+              // OPTIMIZED: Single reload after files are ready
+              // We trust 'files_ready' event has already pushed file updates via applyFileUpdates
+              // A single reload ensures WebContainer reflects the latest changes
 
               if (onReloadPreview && !reloadScheduledRef.current) {
-                console.log('[ChatPanel] 🔄 Triggering DOUBLE WebContainer reload strategy...');
-                reloadScheduledRef.current = true; // Prevent other events from interfering
+                console.log('[ChatPanel] 🔄 Scheduling single WebContainer reload...');
+                reloadScheduledRef.current = true;
 
-                const triggerReload = () => {
+                // Single reload: Wait for FS to settle (2.5s is sufficient)
+                setTimeout(() => {
+                  console.log('[ChatPanel] 🔄 Executing WebContainer reload...');
                   if (onReloadPreview) {
                     onReloadPreview(data);
                   }
-                };
-
-                // First reload: Wait longer for FS to settle (2.5s)
-                setTimeout(() => {
-                  console.log('[ChatPanel] 🔄 executing FIRST reload...');
-                  triggerReload();
+                  reloadScheduledRef.current = false;
                 }, 2500);
-
-                // Second reload: Safety check (6.0s) to ensure everything is caught
-                setTimeout(() => {
-                  console.log('[ChatPanel] 🔄 executing SECOND reload (final consistency check)...');
-                  triggerReload();
-                  reloadScheduledRef.current = false; // Reset flag after final reload
-                }, 6000);
               }
             },
             onComplete: (data) => {
@@ -524,6 +815,10 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                 }
               }
 
+              // Clear attached files after successful send
+              console.log('[ChatPanel] Clearing attached files after successful send');
+              setAttachedFiles([]);
+
               // CRITICAL FIX: Delay setIsStreaming(false) to prevent race condition
               // The issue: onCodeChange() invalidates queries, which refetches session data
               // If we set isStreaming=false immediately, the useEffect will reload messages
@@ -538,6 +833,17 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
               // WebContainer reload is now handled by onFilesReady callback
               // which waits for files to actually arrive before triggering reload
               console.log('[ChatPanel] Stream complete - WebContainer reload will be triggered by onFilesReady');
+
+              // Clear attached files after successful send
+              setAttachedFiles(prev => {
+                // Revoke object URLs to free memory
+                prev.forEach(file => {
+                  if (file.url) {
+                    URL.revokeObjectURL(file.url);
+                  }
+                });
+                return [];
+              });
             },
             onError: (error) => {
               console.error('Streaming error:', error);
@@ -553,6 +859,16 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                 )
               );
               setIsStreaming(false);
+
+              // Clear attached files on error
+              setAttachedFiles(prev => {
+                prev.forEach(file => {
+                  if (file.url) {
+                    URL.revokeObjectURL(file.url);
+                  }
+                });
+                return [];
+              });
             },
           }
         );
@@ -570,6 +886,16 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
           )
         );
         setIsStreaming(false);
+
+        // Clear attached files on error
+        setAttachedFiles(prev => {
+          prev.forEach(file => {
+            if (file.url) {
+              URL.revokeObjectURL(file.url);
+            }
+          });
+          return [];
+        });
       }
     };
 
@@ -580,7 +906,7 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
     ];
 
     const formatTime = (date: Date) => {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleString(); // Show full date and time for debugging
     };
 
     const [viewMode, setViewMode] = useState<'chat' | 'visual'>('chat');
@@ -622,8 +948,60 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       handleSend(message);
     };
 
+    const handleUndoCommit = async (commitHash: string) => {
+      try {
+        // Call backend API to revert the commit
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/projects/${projectId}/git/restore/${commitHash}`, {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to revert commit');
+        }
+
+        const result = await response.json();
+
+        // Show success message
+        toast({
+          title: 'Commit Reverted',
+          description: `Successfully reverted commit ${commitHash.substring(0, 7)}`,
+        });
+
+        // Add the new restore commit to the chat
+        if (result.commit_hash) {
+          const restoreCommitMessage: Message = {
+            id: `commit-${result.commit_hash}`,
+            role: 'system',
+            content: result.message,
+            timestamp: new Date(), // Current time
+            git_commit: {
+              success: true,
+              message: result.message,
+              commit_hash: result.commit_hash,
+            }
+          };
+          setMessages((prev) => [...prev, restoreCommitMessage]);
+        }
+
+        // Reload files to reflect the reverted changes
+        queryClient.invalidateQueries({ queryKey: fileKeys.list(projectId) });
+
+        // Trigger preview reload
+        if (onReloadPreview) {
+          onReloadPreview();
+        }
+      } catch (error) {
+        console.error('Error reverting commit:', error);
+        toast({
+          title: 'Revert Failed',
+          description: error instanceof Error ? error.message : 'Failed to revert commit',
+          variant: 'destructive',
+        });
+      }
+    };
+
     return (
-      <div ref={containerRef} className="h-full flex flex-col bg-background/80">
+      <div ref={containerRef} className="h-full flex flex-col bg-background/80 overflow-x-hidden">
         {/* Header */}
         <div className="p-4 border-b border-border/50 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -687,31 +1065,87 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${message.role === 'user'
-                      ? 'bg-primary/20'
-                      : 'bg-gradient-to-br from-primary to-purple-600'
-                      }`}
-                  >
-                    {message.role === 'user' ? (
-                      <User className="w-4 h-4 text-primary" />
-                    ) : (
-                      <Bot className="w-4 h-4 text-primary-foreground" />
-                    )}
-                  </div>
-                  <div className={`flex flex-col gap-1 ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4">
+              {messages.map((message) => {
+                // Special rendering for git commit messages
+                if (message.role === 'system' && message.git_commit) {
+                  const commit = message.git_commit;
+                  return (
                     <div
-                      className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${message.role === 'user'
-                        ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                        : 'bg-muted/30 text-foreground rounded-tl-sm border border-border/30'
-                        }`}
+                      key={message.id}
+                      className="flex gap-3 items-start"
                     >
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-green-500/20">
+                        <GitCommit className="w-4 h-4 text-green-500" />
+                      </div>
+                      <div className="max-w-[70%] bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-semibold text-green-500">Git Commit</span>
+                              {commit.commit_hash && (
+                                <code className="text-[10px] bg-green-500/10 px-1.5 py-0.5 rounded font-mono text-green-400">
+                                  {commit.commit_hash.substring(0, 7)}
+                                </code>
+                              )}
+                              <span className="text-[10px] text-muted-foreground">
+                                {message.timestamp.toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-foreground">{commit.message}</p>
+                            {commit.commit_count !== undefined && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Total commits: {commit.commit_count}
+                              </p>
+                            )}
+                          </div>
+                          {commit.commit_hash && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-orange-500 hover:text-orange-400 hover:bg-orange-500/10"
+                              onClick={() => handleUndoCommit(commit.commit_hash!)}
+                            >
+                              <Undo2 className="w-3 h-3 mr-1" />
+                              Undo
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Regular user/assistant message rendering
+                return (
+                  <div
+                    key={message.id}
+                    className={`flex flex-col gap-2 ${message.role === 'user' ? 'items-end' : 'items-start'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${message.role === 'user'
+                          ? 'bg-primary/20'
+                          : 'bg-gradient-to-br from-primary to-purple-600'
+                          }`}
+                      >
+                        {message.role === 'user' ? (
+                          <User className="w-3 h-3 text-primary" />
+                        ) : (
+                          <Bot className="w-3 h-3 text-primary-foreground" />
+                        )}
+                      </div>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {message.role === 'user' ? 'You' : 'Lovable AI'}
+                      </span>
+                    </div>
+                    <div className={`flex flex-col gap-1 w-full`}>
+                      <div
+                        className={`w-full p-3 rounded-2xl text-sm leading-relaxed ${message.role === 'user'
+                          ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                          : 'bg-muted/30 text-foreground rounded-tl-sm border border-border/30'
+                          }`}
+                      >
                       {message.role === 'assistant' ? (
                         <>
                           {/* Agent Interactions */}
@@ -801,7 +1235,7 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
 
                           {/* Final Response */}
                           {message.content && (
-                            <div className="prose prose-sm prose-invert max-w-none markdown-content">
+                            <div className="prose prose-sm prose-invert max-w-none markdown-content overflow-hidden break-words">
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 rehypePlugins={[rehypeHighlight]}
@@ -842,7 +1276,30 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                           )}
                         </>
                       ) : (
-                        message.content
+                        <>
+                          {/* User message attachments */}
+                          {message.attachments && message.attachments.length > 0 && (
+                            <div className="mb-2 space-y-2">
+                              {message.attachments.map((file, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                  {file.type === 'image' && file.url ? (
+                                    <img
+                                      src={file.url}
+                                      alt={file.name}
+                                      className="max-w-[200px] max-h-[200px] rounded border border-primary/20"
+                                    />
+                                  ) : (
+                                    <div className="flex items-center gap-2 bg-primary-foreground/10 px-3 py-2 rounded border border-primary/20">
+                                      <FileText className="w-4 h-4" />
+                                      <span className="text-xs">{file.name}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {message.content}
+                        </>
                       )}
                     </div>
                     <span className="text-[10px] text-muted-foreground/60 px-1">
@@ -850,7 +1307,8 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                     </span>
                   </div>
                 </div>
-              ))}
+              );
+              })}
 
               {isStreaming && (
                 <div className="flex gap-3">
@@ -887,6 +1345,43 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
 
             {/* Input */}
             <div className="p-4 border-t border-border/50">
+              {/* File attachments preview */}
+              {attachedFiles.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {attachedFiles.map(file => (
+                    <div
+                      key={file.id}
+                      className="relative group bg-muted/30 border border-border/50 rounded-lg p-2 flex items-center gap-2 max-w-xs"
+                    >
+                      {file.type === 'image' && file.url ? (
+                        <img
+                          src={file.url}
+                          alt={file.name}
+                          className="w-12 h-12 object-cover rounded"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 flex items-center justify-center bg-muted/50 rounded">
+                          <FileText className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeAttachment(file.id)}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="flex items-end gap-2">
                 <div className="flex-1 relative">
                   <textarea
@@ -899,31 +1394,53 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                         handleSend();
                       }
                     }}
-                    placeholder="Describe what you want to create..."
+                    placeholder={attachedFiles.length > 0 ? "Add a message about the attached files..." : "Describe what you want to create..."}
                     className="w-full bg-muted/20 border border-border/30 rounded-xl px-4 py-3 pr-20
                                text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50
                                placeholder:text-muted-foreground min-h-[48px] max-h-32 transition-all"
                     rows={1}
                     disabled={isStreaming}
                   />
+                  {/* Hidden file inputs */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                    multiple
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <input
+                    ref={pdfInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    multiple
+                    onChange={handlePdfSelect}
+                    className="hidden"
+                  />
+
                   <div className="absolute right-2 bottom-2 flex items-center gap-1">
                     <button
-                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted/30"
-                      title="Attach file"
+                      onClick={() => pdfInputRef.current?.click()}
+                      disabled={isStreaming || isUploadingFile}
+                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted/30 disabled:opacity-50"
+                      title="Attach PDF"
                     >
-                      <Paperclip className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
                     </button>
                     <button
-                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted/30"
-                      title="Add image"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={isStreaming || isUploadingFile}
+                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-muted/30 disabled:opacity-50"
+                      title="Add images (UI/UX designs)"
                     >
-                      <Image className="w-4 h-4" />
+                      <ImageIcon className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
                 <Button
                   onClick={() => handleSend()}
-                  disabled={!input.trim() || isStreaming}
+                  disabled={(!input.trim() && attachedFiles.length === 0) || isStreaming}
                   className="h-12 w-12 rounded-xl bg-primary hover:bg-primary/90 p-0 shrink-0"
                 >
                   {isStreaming ? (

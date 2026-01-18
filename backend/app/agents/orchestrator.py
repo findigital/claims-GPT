@@ -8,7 +8,6 @@ from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermi
 from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage, TextMessage
 from autogen_agentchat.teams import SelectorGroupChat
 from autogen_core.model_context import BufferedChatCompletionContext
-from autogen_ext.models.openai import OpenAIChatCompletionClient
 
 from app.agents.prompts import (
     AGENT_SYSTEM_PROMPT,
@@ -16,6 +15,7 @@ from app.agents.prompts import (
     PLANNING_AGENT_DESCRIPTION,
     PLANNING_AGENT_SYSTEM_MESSAGE,
 )
+from app.core.gemini_thought_signature_client import GeminiThoughtSignatureClient
 from app.agents.tools import (
     csv_info,
     delete_file,
@@ -78,27 +78,19 @@ class AgentOrchestrator:
             grep_search,
             run_terminal_cmd,
         ]
-        model_info = {
-            "vision": True,
-            "function_calling": True,
-            "json_output": True,
-            "family": "unknown",
-            "structured_output": True,
-        }
 
-        self.model_client = OpenAIChatCompletionClient(
-            model=settings.OPENAI_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.OPENAI_API_BASE_URL,
+        # Create Gemini client with thought_signature handling
+        # This client extends BaseOpenAIChatCompletionClient and provides better
+        # error handling for thought_signature issues
+        # Gemini-3 Flash Preview: 1M input tokens, 64K output tokens
+        self.model_client = GeminiThoughtSignatureClient(
             temperature=0.7,
-            model_info=model_info,
-            parallel_tool_calls=False,  # Disable parallel tool calls to prevent token limit issues with large files
-            max_tokens=8000,  # DeepSeek max output: 8K tokens (increase to prevent "length" finish reason)
+            max_tokens=64000,  # Gemini-3 Flash max output: 64K tokens
         )
-        # Create buffered contexts to prevent token overflow
-        # Keep last 20 messages (~10 exchanges) for context
-        coder_context = BufferedChatCompletionContext(buffer_size=20)
-        planner_context = BufferedChatCompletionContext(buffer_size=20)
+        # Create buffered contexts with larger buffers to leverage Gemini's 1M input context
+        # Keep last 100 messages (~50 exchanges) for richer context
+        coder_context = BufferedChatCompletionContext(buffer_size=100)
+        planner_context = BufferedChatCompletionContext(buffer_size=100)
 
         self.coder_agent = AssistantAgent(
             name="Coder",
@@ -106,7 +98,7 @@ class AgentOrchestrator:
             system_message=AGENT_SYSTEM_PROMPT,
             model_client=self.model_client,
             tools=self.coder_tools,  # Includes memory RAG tools
-            max_tool_iterations=15,
+            max_tool_iterations=3,  # Low limit to avoid Gemini thought_signature errors
             reflect_on_tool_use=False,
             model_context=coder_context,  # Limit context to prevent token overflow
         )
@@ -246,12 +238,13 @@ class AgentOrchestrator:
                 team_state = json.load(f)
 
             # CRITICAL: Truncate message history to prevent token overflow
-            # Keep only the last 30 messages from the saved state
+            # With Gemini-3 Flash's 1M input tokens, we can keep more history
+            # Keep only the last 150 messages from the saved state (~75 exchanges)
             if "message_thread" in team_state and isinstance(team_state["message_thread"], list):
                 original_count = len(team_state["message_thread"])
-                if original_count > 30:
-                    # Keep last 30 messages
-                    team_state["message_thread"] = team_state["message_thread"][-30:]
+                if original_count > 150:
+                    # Keep last 150 messages
+                    team_state["message_thread"] = team_state["message_thread"][-150:]
                     logger.warning(
                         f"⚠️  Truncated message history from {original_count} to {len(team_state['message_thread'])} messages to prevent token overflow"
                     )

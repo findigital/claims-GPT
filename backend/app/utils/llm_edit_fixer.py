@@ -2,9 +2,9 @@ import json
 
 import httpx
 from autogen_core.models import SystemMessage, UserMessage
-from autogen_ext.models.openai import OpenAIChatCompletionClient
 
 from app.core.config import settings
+from app.core.gemini_client import Gemini3FlashChatCompletionClient
 
 # --- Prompt Configuration ---
 EDIT_SYS_PROMPT = """
@@ -84,15 +84,8 @@ async def _llm_fix_edit(
     http_client = httpx.AsyncClient()
 
     try:
-        # Use OpenAI client with settings from app config
-        client = OpenAIChatCompletionClient(
-            model=settings.OPENAI_MODEL,
-            base_url=settings.OPENAI_API_BASE_URL,
-            api_key=settings.OPENAI_API_KEY,
-            model_capabilities=settings.get_model_capabilities(),
-            http_client=http_client,
-            response_format={"type": "json_object"},
-        )
+        # Create Gemini-3 Flash client
+        client = Gemini3FlashChatCompletionClient(http_client=http_client, response_format={"type": "json_object"})
 
         messages = [
             SystemMessage(content=EDIT_SYS_PROMPT),

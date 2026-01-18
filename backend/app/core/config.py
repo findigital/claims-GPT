@@ -27,12 +27,13 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:8080",
         "http://localhost:8081",
+        "http://localhost:8082",
     ]
 
-    # OpenAI / LLM Configuration
-    OPENAI_API_KEY: Optional[str] = None
-    OPENAI_API_BASE_URL: str = "https://api.openai.com/v1"
-    OPENAI_MODEL: str = "gpt-4"
+    # Gemini-3 Flash API Configuration
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_API_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
 
     # AutoGen Configuration
     AUTOGEN_CACHE_SEED: int = 42

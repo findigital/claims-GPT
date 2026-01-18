@@ -1,4 +1,4 @@
-import asyncio
+from io import BytesIO
 import logging
 from datetime import datetime
 from typing import Dict, List
@@ -358,9 +358,40 @@ Please analyze the request, create a plan if needed, and implement the solution.
         else:
             session = ChatService.create_session(db, ChatSessionCreate(project_id=project_id))
 
-        # Save user message
+        # Process attachments if present
+        processed_attachments = []
+        if chat_request.attachments:
+            from app.utils.multimodal import process_attachment
+
+            for attachment in chat_request.attachments:
+                is_valid, error, processed_data, processed_mime = process_attachment(
+                    attachment.type, attachment.mime_type, attachment.data, attachment.name
+                )
+
+                if not is_valid:
+                    yield {"type": "error", "data": {"message": f"Invalid attachment {attachment.name}: {error}"}}
+                    return
+
+                processed_attachments.append({
+                    "type": attachment.type,
+                    "mime_type": processed_mime,
+                    "data": processed_data,
+                    "name": attachment.name
+                })
+
+        # Save user message with attachments in metadata
+        user_message_metadata = None
+        if processed_attachments:
+            import json
+            user_message_metadata = json.dumps({"attachments": processed_attachments})
+
         user_message = ChatService.add_message(
-            db, ChatMessageCreate(session_id=session.id, role=MessageRole.USER, content=chat_request.message)
+            db, ChatMessageCreate(
+                session_id=session.id,
+                role=MessageRole.USER,
+                content=chat_request.message,
+                message_metadata=user_message_metadata
+            )
         )
 
         # Yield initial event
@@ -416,6 +447,27 @@ Please analyze the request, create a plan if needed, and implement the solution.
             try:
                 os.chdir(project_dir)
                 logger.info(f"📂 Changed working directory to: {project_dir}")
+
+                # Prepare multimodal content if attachments present
+                task_input = None  # Will be either string or MultiModalMessage
+
+                if processed_attachments:
+                    # Build multimodal message using AutoGen format
+                    from autogen_agentchat.messages import MultiModalMessage
+                    from autogen_core import Image as AGImage
+                    from PIL import Image
+                    import base64
+
+                    content_parts = []
+
+                    # Add images to content
+                    for attachment in processed_attachments:
+                        if attachment["type"] == "image":
+                            # Decode base64 to PIL Image
+                            img_data = base64.b64decode(attachment["data"])
+                            pil_img = Image.open(BytesIO(img_data))
+                            ag_image = AGImage(pil_img)
+                            content_parts.append(ag_image)
 
                 # Build task description with optimizations for first message
                 if is_first_message:
@@ -485,6 +537,19 @@ Project Context:
 IMPORTANT: You are working in the project directory. All file operations will be relative to this directory.
 Please analyze the request, create a plan if needed, and implement the solution."""
 
+                # Create multimodal message if attachments are present
+                if processed_attachments:
+                    from autogen_agentchat.messages import MultiModalMessage
+
+                    # Prepend text description
+                    content_parts.insert(0, task_description)
+
+                    # Create multimodal message
+                    task_input = MultiModalMessage(content=content_parts, source="User")
+                else:
+                    # Use simple text task
+                    task_input = task_description
+
                 logger.info("=" * 80)
                 logger.info("🤖 STARTING MULTI-AGENT TEAM EXECUTION (STREAMING)")
                 logger.info("=" * 80)
@@ -539,7 +604,7 @@ Please analyze the request, create a plan if needed, and implement the solution.
 
                 # Stream agent events in real-time
                 async for message in orchestrator.main_team.run_stream(
-                    task=task_description, cancellation_token=CancellationToken()
+                    task=task_input, cancellation_token=CancellationToken()
                 ):
                     event_type = type(message).__name__
                     msg_source = message.source if hasattr(message, "source") else "Unknown"
@@ -774,65 +839,90 @@ Please analyze the request, create a plan if needed, and implement the solution.
             }
             logger.info(f"📁 [Files Ready] ✅ files_ready event SENT - Files written to filesystem, ready for frontend download")
 
-            # AUTO-COMMIT: Create Git commit in background (non-blocking)
-            # Send immediate notification that commit is starting
-            yield {
-                "type": "git_commit",
-                "data": {
-                    "success": True,
-                    "message": "Creating commit...",
-                    "commit_count": 0,  # Will be updated when commit completes
-                },
-            }
+            # AUTO-COMMIT: Create Git commit synchronously so we can send the result to frontend
+            commit_hash = None
+            commit_message_title = None
+            try:
+                logger.info("🔄 Creating automatic Git commit...")
 
-            # Start background task for commit (non-blocking)
-            async def background_commit():
-                """Background task to create git commit without blocking response"""
-                try:
-                    logger.info("🔄 [Background] Creating automatic Git commit...")
+                # Get the git diff to see what changed
+                diff_output = GitService.get_diff(project_id)
 
-                    # Get the git diff to see what changed
-                    diff_output = GitService.get_diff(project_id)
+                if diff_output and diff_output.strip():
+                    # Generate commit message using LLM
+                    commit_info = await CommitMessageService.generate_commit_message(
+                        diff=diff_output, user_request=chat_request.message
+                    )
 
-                    if diff_output and diff_output.strip():
-                        # Generate commit message using LLM
-                        commit_info = await CommitMessageService.generate_commit_message(
-                            diff=diff_output, user_request=chat_request.message
-                        )
+                    # Combine title and body for full commit message
+                    full_commit_message = f"{commit_info['title']}\n\n{commit_info['body']}"
+                    commit_message_title = commit_info['title']
 
-                        # Combine title and body for full commit message
-                        full_commit_message = f"{commit_info['title']}\n\n{commit_info['body']}"
+                    # Create the commit (synchronous git operation)
+                    commit_success = GitService.commit_changes(
+                        project_id=project_id,
+                        message=full_commit_message,
+                        files=None,  # Commit all changes
+                    )
 
-                        # Create the commit (synchronous git operation)
-                        commit_success = GitService.commit_changes(
-                            project_id=project_id,
-                            message=full_commit_message,
-                            files=None,  # Commit all changes
-                        )
+                    if commit_success:
+                        logger.info(f"✅ Git commit created: {commit_info['title']}")
 
-                        if commit_success:
-                            logger.info(f"✅ [Background] Git commit created: {commit_info['title']}")
+                        # Get the latest commit hash
+                        commits = GitService.get_commit_history(project_id, limit=1)
+                        if commits:
+                            commit_hash = commits[0]['hash']
+                            logger.info(f"📝 Commit hash: {commit_hash}")
 
-                            # Get commit count (excluding initial commit)
-                            commits = GitService.get_commit_history(project_id, limit=100)
-                            commit_count = len(commits)
-                            logger.info(f"📊 [Background] Total commits in project: {commit_count}")
+                        # Get commit count
+                        all_commits = GitService.get_commit_history(project_id, limit=100)
+                        commit_count = len(all_commits)
+                        logger.info(f"📊 Total commits in project: {commit_count}")
 
-                            # Check if this is the first commit for screenshot
-                            if commit_count == 2:
-                                logger.info("=" * 80)
-                                logger.info("📸 FIRST COMMIT DETECTED (Background)")
-                                logger.info("📸 Screenshot will be captured by frontend from WebContainer")
-                                logger.info("=" * 80)
-                        else:
-                            logger.warning("⚠️  [Background] Git commit failed or no changes to commit")
+                        # Send commit success event to frontend
+                        yield {
+                            "type": "git_commit",
+                            "data": {
+                                "success": True,
+                                "message": commit_message_title,
+                                "commit_hash": commit_hash,
+                                "commit_count": commit_count,
+                            },
+                        }
+
+                        # Check if this is the first commit for screenshot
+                        if commit_count == 2:
+                            logger.info("=" * 80)
+                            logger.info("📸 FIRST COMMIT DETECTED")
+                            logger.info("📸 Screenshot will be captured by frontend from WebContainer")
+                            logger.info("=" * 80)
                     else:
-                        logger.info("ℹ️  [Background] No changes detected for Git commit")
-                except Exception as e:
-                    logger.error(f"❌ [Background] Error creating auto-commit: {e}")
-
-            # Launch background task without awaiting it
-            asyncio.create_task(background_commit())
+                        logger.warning("⚠️ Git commit failed or no changes to commit")
+                        yield {
+                            "type": "git_commit",
+                            "data": {
+                                "success": False,
+                                "message": "No changes to commit",
+                            },
+                        }
+                else:
+                    logger.info("ℹ️ No changes detected for Git commit")
+                    yield {
+                        "type": "git_commit",
+                        "data": {
+                            "success": False,
+                            "message": "No changes to commit",
+                        },
+                    }
+            except Exception as e:
+                logger.error(f"❌ Error creating auto-commit: {e}")
+                yield {
+                    "type": "git_commit",
+                    "data": {
+                        "success": False,
+                        "message": f"Error: {str(e)}",
+                    },
+                }
 
             # Trigger WebContainer reload after agent completes
             logger.info("🔄 Triggering WebContainer reload (agent finished)")

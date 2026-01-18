@@ -113,9 +113,10 @@ build/
             return []
 
         try:
-            # Get commit log
+            # Get commit log with ISO timestamps including timezone
+            # Using %aI for ISO 8601 strict format
             result = subprocess.run(
-                ["git", "log", f"-{limit}", "--pretty=format:%H|%an|%ad|%s", "--date=iso"],
+                ["git", "log", f"-{limit}", "--pretty=format:%H|%an|%aI|%s"],
                 cwd=project_dir,
                 check=True,
                 capture_output=True,
@@ -126,8 +127,15 @@ build/
             commits = []
             for line in result.stdout.strip().split("\n"):
                 if line:
-                    hash, author, date, message = line.split("|", 3)
-                    commits.append({"hash": hash, "author": author, "date": date, "message": message})
+                    from datetime import datetime, timezone
+                    hash, author, date_str, message = line.split("|", 3)
+                    # Parse the ISO format date and convert to UTC
+                    dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    # Convert to UTC
+                    utc_dt = dt.astimezone(timezone.utc)
+                    # Format as ISO string
+                    utc_date = utc_dt.isoformat()
+                    commits.append({"hash": hash, "author": author, "date": utc_date, "message": message})
 
             return commits
 

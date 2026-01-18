@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 from app.models.chat import MessageRole
 
@@ -25,21 +25,32 @@ class ChatMessageInDB(ChatMessageBase):
     class Config:
         from_attributes = True
 
+    @field_serializer('created_at')
+    def serialize_created_at(self, dt: datetime, _info):
+        """Serialize datetime as ISO format with UTC timezone"""
+        # Ensure datetime is UTC-aware
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
 
 class ChatMessage(ChatMessageInDB):
     agent_interactions: Optional[List[dict]] = None
+    attachments: Optional[List[dict]] = None
 
     @classmethod
     def from_db_message(cls, db_message):
-        """Convert database message to ChatMessage with parsed agent_interactions"""
+        """Convert database message to ChatMessage with parsed agent_interactions and attachments"""
         import json
 
         agent_interactions = None
+        attachments = None
 
         if db_message.message_metadata:
             try:
                 metadata = json.loads(db_message.message_metadata)
                 agent_interactions = metadata.get("agent_interactions", None)
+                attachments = metadata.get("attachments", None)
             except:
                 pass
 
@@ -52,6 +63,7 @@ class ChatMessage(ChatMessageInDB):
             message_metadata=db_message.message_metadata,
             created_at=db_message.created_at,
             agent_interactions=agent_interactions,
+            attachments=attachments,
         )
 
 
@@ -72,6 +84,14 @@ class ChatSessionInDB(ChatSessionBase):
     class Config:
         from_attributes = True
 
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, dt: datetime, _info):
+        """Serialize datetime as ISO format with UTC timezone"""
+        # Ensure datetime is UTC-aware
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
 
 class ChatSession(ChatSessionInDB):
     pass
@@ -81,9 +101,18 @@ class ChatSessionWithMessages(ChatSession):
     messages: List[ChatMessage] = []
 
 
+class FileAttachment(BaseModel):
+    """Multimodal file attachment (image or PDF)"""
+    type: str  # "image" or "pdf"
+    mime_type: str
+    data: str  # Base64 encoded data
+    name: str
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[int] = None
+    attachments: Optional[List[FileAttachment]] = None  # Multimodal support
 
 
 class AgentInteraction(BaseModel):

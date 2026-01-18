@@ -43,6 +43,7 @@ export interface ChatMessage {
   content: string;
   message_metadata?: string;
   agent_interactions?: AgentInteraction[];
+  attachments?: FileAttachment[];
   created_at: string;
 }
 
@@ -75,9 +76,17 @@ export interface UpdateFileRequest {
   filepath?: string; // Required for filesystem-based updates
 }
 
+export interface FileAttachment {
+  type: 'image' | 'pdf';
+  mime_type: string;
+  data: string;  // Base64 encoded
+  name: string;
+}
+
 export interface SendChatMessageRequest {
   message: string;
   session_id?: number;
+  attachments?: FileAttachment[];  // Multimodal support
 }
 
 export interface SendChatMessageResponse {
@@ -114,12 +123,18 @@ async function fetchApi<T>(
 ): Promise<T> {
   const url = `${API_URL}${endpoint}`;
 
+  // Only add Content-Type header if there's a body to send
+  const headers: Record<string, string> = {
+    ...options.headers as Record<string, string>,
+  };
+
+  if (options.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   const response = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -250,7 +265,7 @@ export const chatApi = {
       onStart?: (data: { session_id: number; user_message_id: number }) => void;
       onAgentInteraction?: (interaction: AgentInteraction) => void;
       onFilesReady?: (data: { message: string; project_id: number }) => void;
-      onGitCommit?: (data: { success: boolean; message?: string; full_message?: string; error?: string; commit_count?: number }) => void;
+      onGitCommit?: (data: { success: boolean; message?: string; full_message?: string; error?: string; commit_count?: number; commit_hash?: string }) => void;
       onReloadPreview?: (data: { tool_call_count: number; message: string }) => void;
       onComplete?: (data: SendChatMessageResponse) => void;
       onError?: (error: string) => void;
@@ -269,8 +284,6 @@ export const chatApi = {
           'Accept': 'text/event-stream',
         },
         body: JSON.stringify(data),
-        // Prevent any timeout - let the stream run as long as needed
-        keepalive: true,
       })
         .then(async (response) => {
           console.log('[SSE] Response received:', response.status, response.statusText);

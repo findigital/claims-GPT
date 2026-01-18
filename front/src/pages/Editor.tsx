@@ -1,17 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
-  Sparkles,
-  Settings,
-  Share2,
-  ChevronLeft,
   PanelLeftClose,
   PanelLeft,
-  Cloud,
   Zap,
   FileText,
-  Camera,
-  Download
 } from 'lucide-react';
 import { useProject } from '@/hooks/useProjects';
 import { useUpdateFile } from '@/hooks/useFiles';
@@ -29,7 +22,6 @@ import { PreviewPanel, PreviewPanelRef, SelectedElementData } from '@/components
 import { EditorTabs } from '@/components/editor/EditorTabs';
 import { GitHistoryModal } from '@/components/editor/GitHistoryModal';
 import { GitConfigModal } from '@/components/editor/GitConfigModal';
-import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 
@@ -45,7 +37,7 @@ const Editor = () => {
   const [selectedFile, setSelectedFile] = useState<{ name: string; id: number; content: string; filepath: string } | null>(null);
   const [editedContent, setEditedContent] = useState<string>('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [activeView, setActiveView] = useState<'code' | 'preview' | 'split'>('split');
+  const [activeView, setActiveView] = useState<'code' | 'preview' | 'split'>('preview');
   const [showExplorer, setShowExplorer] = useState(true);
   const [showChat, setShowChat] = useState(true);
   const [isPreviewLoading, setIsPreviewLoading] = useState(true);
@@ -122,16 +114,21 @@ const Editor = () => {
 
   // Auto-send initial message if provided from homepage (ONE-TIME ONLY)
   useEffect(() => {
-    const initialMessage = (location.state as { initialMessage?: string })?.initialMessage;
+    const state = location.state as { initialMessage?: string; attachments?: any[] };
+    const initialMessage = state?.initialMessage;
+    const attachments = state?.attachments;
 
     if (initialMessage && !initialMessageSent) {
       console.log('[Editor] Initial message detected:', initialMessage);
+      if (attachments) {
+        console.log('[Editor] Attachments detected:', attachments.length);
+      }
 
       // Wait for chat panel to be fully ready
       const timer = setTimeout(() => {
         if (chatPanelRef.current) {
           console.log('[Editor] Sending initial message to chat panel');
-          chatPanelRef.current.sendMessage(initialMessage);
+          chatPanelRef.current.sendMessage(initialMessage, attachments);
           setInitialMessageSent(true);
 
           // IMPORTANT: Clear location state to prevent re-sending on page reload
@@ -197,9 +194,9 @@ const Editor = () => {
       setSelectedFile({ ...selectedFile, content: editedContent });
       setHasUnsavedChanges(false);
 
-      // Reload WebContainer to reflect changes
+      // Reload WebContainer to reflect manual changes
       if (previewPanelRef.current) {
-        previewPanelRef.current.reload();
+        previewPanelRef.current.handleRefresh();
       }
 
       toast({
@@ -252,8 +249,10 @@ const Editor = () => {
   };
 
   const handleRunProject = () => {
-    // Trigger a reload of the preview to run the project
-    handleCodeChange();
+    // Just refresh the preview - no need to save if nothing changed
+    if (previewPanelRef.current) {
+      previewPanelRef.current.handleRefresh();
+    }
     toast({
       title: "Running project",
       description: "Reloading preview to run the latest code...",
@@ -384,9 +383,9 @@ const Editor = () => {
       queryClient.invalidateQueries({ queryKey: ['project', Number(projectId)] });
     }
 
-    // Trigger WebContainer reload via ref
+    // Use handleRefresh for proper WebContainer reload
     if (previewPanelRef.current) {
-      previewPanelRef.current.reload();
+      previewPanelRef.current.handleRefresh();
     }
   };
 
@@ -471,72 +470,12 @@ const Editor = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Top Bar */}
-      <header className="h-12 flex items-center justify-between px-4 border-b border-border/50 bg-background/80 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-3">
-          <Link to="/projects" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-            <ChevronLeft className="w-4 h-4" />
-          </Link>
-          <div className="w-px h-6 bg-border/50" />
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg shadow-primary/20">
-              <Sparkles className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold">{project.name}</h1>
-              <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-xs text-muted-foreground">Synced</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted/20 rounded-lg border border-border/30">
-            <Cloud className="w-4 h-4 text-primary" />
-            <span className="text-xs font-medium">Cloud</span>
-          </div>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={handleManualScreenshot}>
-                <Camera className="w-4 h-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Capture project thumbnail
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={handleDownloadProject}>
-                <Download className="w-4 h-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Download project as ZIP
-            </TooltipContent>
-          </Tooltip>
-
-          <Button variant="ghost" size="icon">
-            <Settings className="w-4 h-4" />
-          </Button>
-
-          <Button size="sm" className="gap-2">
-            <Share2 className="w-4 h-4" />
-            Share
-          </Button>
-        </div>
-      </header>
-
       {/* Main Content with Resizable Panels */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Chat Panel */}
         {showChat && (
           <>
-            <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+            <ResizablePanel defaultSize={35} minSize={30} maxSize={35}>
               <div className="h-full relative">
                 <ChatPanel
                   ref={chatPanelRef}
@@ -626,6 +565,8 @@ const Editor = () => {
                     onGitSync={handleGitSync}
                     onGitConfig={handleGitConfig}
                     isSyncing={isSyncing}
+                    onManualScreenshot={handleManualScreenshot}
+                    onDownloadProject={handleDownloadProject}
                   />
 
                   <ResizablePanelGroup direction="horizontal" className="flex-1">

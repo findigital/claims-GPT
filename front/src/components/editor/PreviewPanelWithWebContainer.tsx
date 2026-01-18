@@ -18,6 +18,7 @@ import {
 import { loadProject, reloadProjectFiles, updateProjectFiles } from '@/services/webcontainer';
 import { initializeLogCapture } from '@/services/browserLogs';
 import { API_URL } from '@/services/api';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 
 export interface SelectedElementData {
   elementId: string;
@@ -51,6 +52,7 @@ interface ConsoleLog {
 
 export interface PreviewPanelRef {
   reload: () => void;
+  handleRefresh: () => void;  // Preferred method for refreshing WebContainer
   updateStyle: (property: string, value: string) => void;
   captureAndSendScreenshot: () => Promise<boolean>;
   applyFileUpdates: (files: Array<{ path: string, content: string }>) => Promise<void>;
@@ -334,18 +336,21 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
       }
     };
 
-    // Expose reload method to parent via ref (uses lightweight reload)
+    // Define handleRefresh first so it can be referenced
+    const handleRefresh = () => {
+      if (onReload) {
+        onReload();
+      }
+      initializeWebContainer();
+    };
+
+    // Expose methods to parent via ref
     useImperativeHandle(ref, () => ({
       reload: async () => {
-        if (onReload) {
-          onReload();
-        }
-        // User requested full refresh via handleRefresh logic to resolve import errors
-        // This is a "heavy" reload that ensures a clean state
-        await initializeWebContainer();
+        // Lightweight reload - just reinitialize WebContainer
+        handleRefresh();
 
         // After reload, re-apply visual mode if it's enabled
-        // Wait a bit longer to ensure iframe processed the file updates
         setTimeout(() => {
           if (iframeRef.current?.contentWindow && isVisualMode) {
             console.log('[PreviewPanel] Re-enabling visual mode after reload');
@@ -354,8 +359,9 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
               enabled: true
             }, '*');
           }
-        }, 2000); // Increased delay for full reload
+        }, 2000);
       },
+      handleRefresh,  // Expose handleRefresh directly
       updateStyle: (property: string, value: string) => {
         if (!iframeRef.current?.contentWindow) return;
         iframeRef.current.contentWindow.postMessage({
@@ -397,13 +403,6 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
         }
       }
     }));
-
-    const handleRefresh = () => {
-      if (onReload) {
-        onReload();
-      }
-      initializeWebContainer();
-    };
 
     const getLogIcon = (type: ConsoleLog['type']) => {
       switch (type) {
@@ -524,17 +523,7 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
                 <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
               )}
             </button>
-            <button
-              disabled={!previewUrl}
-              onClick={handleCopyUrl}
-              className={`p-1.5 rounded transition-colors disabled:opacity-50 ${urlCopied
-                ? 'bg-green-500/20 text-green-400'
-                : 'hover:bg-muted/20 text-muted-foreground hover:text-foreground'
-                }`}
-              title={urlCopied ? "URL copied!" : "Copy preview URL"}
-            >
-              {urlCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            </button>
+            
             <button
               onClick={handleFullscreen}
               className="p-1.5 hover:bg-muted/20 rounded transition-colors text-muted-foreground hover:text-foreground"
@@ -545,60 +534,67 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
           </div>
         </div>
 
-        {/* Preview Area */}
-        <div className="flex-1 overflow-auto p-4 flex justify-center bg-[#1a1a2e]">
-          <div
-            className={`${deviceWidths[device]} w-full h-full bg-white
-                        rounded-lg overflow-hidden shadow-2xl border border-border/30 transition-all duration-300`}
-          >
-            {isLoading ? (
-              <div className="h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-slate-900 to-slate-800">
-                <div className="relative">
-                  <Loader2 className="w-12 h-12 text-primary animate-spin" />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {isInitializing ? 'Starting WebContainer...' : 'Loading preview...'}
-                </p>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
-                  <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                  {isInitializing ? 'Installing dependencies...' : 'Preparing...'}
-                </div>
+        {/* Preview and Console Area */}
+        <ResizablePanelGroup direction="vertical" className="flex-1">
+          {/* Preview Area */}
+          <ResizablePanel defaultSize={showConsole ? 85 : 100} minSize={40}>
+            <div className="h-full overflow-auto p-4 flex justify-center bg-[#1a1a2e]">
+              <div
+                className={`${deviceWidths[device]} w-full h-full bg-white
+                            rounded-lg overflow-hidden shadow-2xl border border-border/30 transition-all duration-300`}
+              >
+                {isLoading ? (
+                  <div className="h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-slate-900 to-slate-800">
+                    <div className="relative">
+                      <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {isInitializing ? 'Starting WebContainer...' : 'Loading preview...'}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
+                      <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                      {isInitializing ? 'Installing dependencies...' : 'Preparing...'}
+                    </div>
+                  </div>
+                ) : initError ? (
+                  <div className="h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-red-900/20 to-slate-800 p-8">
+                    <AlertCircle className="w-12 h-12 text-red-400" />
+                    <p className="text-sm text-red-400 font-medium">Failed to start preview</p>
+                    <p className="text-xs text-muted-foreground text-center max-w-md">
+                      {initError}
+                    </p>
+                    <button
+                      onClick={handleRefresh}
+                      className="mt-4 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : previewUrl ? (
+                  <iframe
+                    ref={iframeRef}
+                    src={previewUrl}
+                    className="w-full h-full border-0"
+                    title="Preview"
+                    allow="cross-origin-isolated"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+                    <p className="text-sm text-muted-foreground">No preview available</p>
+                  </div>
+                )}
               </div>
-            ) : initError ? (
-              <div className="h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-red-900/20 to-slate-800 p-8">
-                <AlertCircle className="w-12 h-12 text-red-400" />
-                <p className="text-sm text-red-400 font-medium">Failed to start preview</p>
-                <p className="text-xs text-muted-foreground text-center max-w-md">
-                  {initError}
-                </p>
-                <button
-                  onClick={handleRefresh}
-                  className="mt-4 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : previewUrl ? (
-              <iframe
-                ref={iframeRef}
-                src={previewUrl}
-                className="w-full h-full border-0"
-                title="Preview"
-                allow="cross-origin-isolated"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-              />
-            ) : (
-              <div className="h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-                <p className="text-sm text-muted-foreground">No preview available</p>
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          </ResizablePanel>
 
-        {/* Console */}
-        {showConsole && (
-          <div className="h-64 border-t border-border/50 bg-[#0d1117] flex flex-col">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border/50">
+          {/* Console */}
+          {showConsole && (
+            <>
+              <ResizableHandle />
+              <ResizablePanel defaultSize={15} minSize={10} maxSize={50}>
+                <div className="h-full border-t border-border/50 bg-[#0d1117] flex flex-col">
+            <div className="flex items-center justify-between px-3  border-b border-border/50">
               <div className="flex items-center gap-4">
                 <span className="text-xs font-medium text-foreground">Console</span>
                 <div className="flex items-center gap-2">
@@ -660,8 +656,11 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
                 ))
               )}
             </div>
-          </div>
-        )}
+                </div>
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
       </div>
     );
   }

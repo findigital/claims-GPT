@@ -23,12 +23,18 @@ autogen-agentchat==0.7.5
 autogen-core==0.7.5
 autogen-ext[openai]==0.7.5
 
+# Google Gemini API
+google-generativeai==0.8.4
+
 # Utils
 requests==2.32.3
 aiohttp==3.11.11
 PyYAML
 beautifulsoup4==4.12.3
 pathspec
+
+# Image processing (for multimodal)
+Pillow==11.0.0
 
 # Screenshot capture
 playwright==1.48.0

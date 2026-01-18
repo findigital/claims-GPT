@@ -53,7 +53,7 @@ def main():
     print("\n🎉 Database initialization complete!")
     print("\n📝 Next steps:")
     print("   1. Copy .env.example to .env")
-    print("   2. Add your OPENAI_API_KEY to .env")
+    print("   2. Add your GEMINI_API_KEY to .env")
     print("   3. Run: python run.py")
     print("   4. Visit: http://localhost:8000/docs")
 

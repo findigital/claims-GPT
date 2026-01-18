@@ -2,17 +2,17 @@ import io
 import json
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import httpx
 from autogen_core.models import SystemMessage, UserMessage
-from autogen_ext.models.openai import OpenAIChatCompletionClient
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.gemini_client import Gemini3FlashChatCompletionClient
 from app.db import get_db
 from app.schemas import (
     Project,
@@ -34,13 +34,23 @@ router = APIRouter()
 MOCK_USER_ID = 1
 
 
+class FileAttachmentForProject(BaseModel):
+    """Multimodal file attachment for project creation"""
+    type: str  # "image" or "pdf"
+    mime_type: str
+    data: str  # Base64 encoded data
+    name: str
+
+
 class ProjectFromMessageRequest(BaseModel):
     message: str
+    attachments: Optional[List[FileAttachmentForProject]] = None
 
 
 class ProjectFromMessageResponse(BaseModel):
     project: Project
     initial_message: str
+    attachments: Optional[List[FileAttachmentForProject]] = None
 
 
 @router.post("/from-message", response_model=ProjectFromMessageResponse, status_code=status.HTTP_201_CREATED)
@@ -72,26 +82,12 @@ User request: {user_message}
 
 Remember to return ONLY the JSON object, nothing else."""
 
-    # Call OpenAI to generate metadata
+    # Call Gemini-3 Flash to generate metadata
     http_client = httpx.AsyncClient()
 
     try:
-        # Define model capabilities for non-OpenAI models (like DeepSeek)
-        model_info = {
-            "vision": True,
-            "function_calling": True,
-            "json_output": True,
-            "family": "unknown",
-            "structured_output": True,
-        }
-
-        client = OpenAIChatCompletionClient(
-            model=settings.OPENAI_MODEL,
-            base_url=settings.OPENAI_API_BASE_URL,
-            api_key=settings.OPENAI_API_KEY,
-            model_capabilities=model_info,
-            http_client=http_client,
-        )
+        # Create Gemini-3 Flash client
+        client = Gemini3FlashChatCompletionClient(http_client=http_client)
 
         messages = [
             SystemMessage(content=system_prompt),
@@ -123,7 +119,12 @@ Remember to return ONLY the JSON object, nothing else."""
 
     project = ProjectService.create_project(db, project_data, MOCK_USER_ID)
 
-    return ProjectFromMessageResponse(project=project, initial_message=user_message)
+    # Pass attachments through to response (for editor to use)
+    return ProjectFromMessageResponse(
+        project=project,
+        initial_message=user_message,
+        attachments=request.attachments
+    )
 
 
 @router.post("", response_model=Project, status_code=status.HTTP_201_CREATED)
@@ -296,14 +297,14 @@ def get_project_bundle(project_id: int, db: Session = Depends(get_db)):
 @router.get("/{project_id}/git/history")
 def get_git_history(project_id: int, limit: int = 20, db: Session = Depends(get_db)):
     """
-    Get Git commit history for a project
+    Get Git commit history for a project (returns UTC timestamps)
 
     Args:
         project_id: The project ID
         limit: Maximum number of commits to return (default: 20, max: 100)
 
     Returns:
-        List of commits with hash, author, date, and message
+        List of commits with hash, author, date (UTC), and message
     """
     # Verify ownership
     ProjectService.get_project(db, project_id, MOCK_USER_ID)
@@ -311,6 +312,7 @@ def get_git_history(project_id: int, limit: int = 20, db: Session = Depends(get_
     # Limit to max 100 commits
     limit = min(limit, 100)
 
+    # Get commits with UTC timestamps
     commits = GitService.get_commit_history(project_id, limit)
 
     return {"project_id": project_id, "commits": commits, "total": len(commits)}
