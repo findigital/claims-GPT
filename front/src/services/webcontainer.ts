@@ -266,11 +266,179 @@ const SCREENSHOT_HELPER_SCRIPT = `
 `;
 
 /**
- * Lightweight Visual Editor script (minimal version)
+ * Visual Editor Script - Injects into WebContainer for element selection
  */
-const VISUAL_EDITOR_SCRIPT = `
-(function(){console.log('[VisualEditor] Init');let m=false,s=null,h=null;const style=document.createElement('style');style.textContent='.visual-editor-mode{cursor:crosshair!important}.visual-editor-hover{outline:2px dashed #3b82f6!important;z-index:9999!important}.visual-editor-selected{outline:2px solid #3b82f6!important;z-index:9999!important}';document.head.appendChild(style);window.addEventListener('message',e=>{const{type,enabled,property,value}=e.data;if(type==='visual-editor:toggle-mode'){m=enabled;m?document.body.classList.add('visual-editor-mode'):(document.body.classList.remove('visual-editor-mode'),s&&s.classList.remove('visual-editor-selected'),h&&h.classList.remove('visual-editor-hover'),s=h=null)}else if(type==='visual-editor:update-style'&&s)s.style[property]=value});document.addEventListener('mouseover',e=>{if(!m)return;h&&h!==s&&h.classList.remove('visual-editor-hover');h=e.target;h!==s&&h.classList.add('visual-editor-hover')},true);document.addEventListener('mouseout',e=>{m&&e.target.classList.remove('visual-editor-hover')},true);document.addEventListener('click',e=>{if(!m)return;e.preventDefault();e.stopPropagation();s&&s.classList.remove('visual-editor-selected');s=e.target;s.classList.add('visual-editor-selected');s.classList.remove('visual-editor-hover');const getSelector=el=>{if(el.id)return'#'+el.id;let path=[],cur=el;while(cur&&cur!==document.body){let sel=cur.tagName.toLowerCase();if(cur.id){sel+='#'+cur.id;path.unshift(sel);break}else{let nth=1,sib=cur;while(sib=sib.previousElementSibling)sib.tagName.toLowerCase()===sel&&nth++;nth!==1&&(sel+=':nth-of-type('+nth+')')}path.unshift(sel);cur=cur.parentElement}return path.join(' > ')};window.parent.postMessage({type:'visual-editor:selected',elementId:s.id||'',tagName:s.tagName.toLowerCase(),className:s.className,selector:getSelector(s),innerText:s.innerText.substring(0,100)},'*')},true)})();
-`;
+    // Inject Visual Editor Helper Script
+    const VISUAL_EDITOR_SCRIPT = `
+      (function() {
+        console.log('[VisualEditor] Helper script initialized');
+        let isVisualMode = false;
+        let selectedElement = null;
+        let hoveredElement = null;
+        
+        // Add styles for visual editor
+        const style = document.createElement('style');
+        style.textContent = \`
+          .visual-editor-mode { cursor: crosshair !important; }
+          .visual-editor-hover { outline: 2px dashed #3b82f6 !important; z-index: 9999 !important; }
+          .visual-editor-selected { outline: 2px solid #3b82f6 !important; z-index: 9999 !important; }
+        \`;
+        document.head.appendChild(style);
+
+        // Handle messages from parent
+        window.addEventListener('message', (event) => {
+          const { type, enabled, property, value } = event.data;
+          
+          if (type === 'visual-editor:toggle-mode') {
+            isVisualMode = enabled;
+            console.log('[VisualEditor] Mode toggled:', isVisualMode);
+            if (isVisualMode) {
+              document.body.classList.add('visual-editor-mode');
+            } else {
+              document.body.classList.remove('visual-editor-mode');
+              clearSelection();
+            }
+          } else if (type === 'visual-editor:update-style') {
+             if (selectedElement) {
+               console.log('[VisualEditor] Updating style:', property, value);
+               selectedElement.style[property] = value;
+             }
+          }
+        });
+
+        function clearSelection() {
+          if (selectedElement) {
+            selectedElement.classList.remove('visual-editor-selected');
+            selectedElement = null;
+          }
+          if (hoveredElement) {
+            hoveredElement.classList.remove('visual-editor-hover');
+            hoveredElement = null;
+          }
+        }
+
+        // Mouse interaction
+        document.addEventListener('mouseover', (e) => {
+          if (!isVisualMode) return;
+          e.stopPropagation();
+          
+          if (hoveredElement && hoveredElement !== selectedElement) {
+            hoveredElement.classList.remove('visual-editor-hover');
+          }
+          
+          hoveredElement = e.target;
+          if (hoveredElement !== selectedElement) {
+            hoveredElement.classList.add('visual-editor-hover');
+          }
+        }, true);
+
+        document.addEventListener('mouseout', (e) => {
+          if (!isVisualMode) return;
+          if (e.target.classList.contains('visual-editor-hover')) {
+             e.target.classList.remove('visual-editor-hover');
+          }
+        }, true);
+
+        document.addEventListener('click', (e) => {
+          if (!isVisualMode) return;
+          e.preventDefault();
+          e.stopPropagation();
+          
+          if (selectedElement) {
+            selectedElement.classList.remove('visual-editor-selected');
+          }
+          
+          selectedElement = e.target;
+          selectedElement.classList.add('visual-editor-selected');
+          selectedElement.classList.remove('visual-editor-hover');
+          
+          // Generate a unique selector
+          const getSelector = (el) => {
+            if (el.id) return '#' + el.id;
+            
+            let path = [];
+            let current = el;
+            
+            while (current && current !== document.body) {
+              let selector = current.tagName.toLowerCase();
+              
+              if (current.id) {
+                selector += '#' + current.id;
+                path.unshift(selector);
+                break;
+              } else {
+                let nth = 1;
+                let sibling = current;
+                while (sibling = sibling.previousElementSibling) {
+                  if (sibling.tagName.toLowerCase() === selector) nth++;
+                }
+                if (nth !== 1) selector += ':nth-of-type(' + nth + ')';
+              }
+              
+              path.unshift(selector);
+              current = current.parentElement;
+            }
+            
+            return path.join(' > ');
+          };
+          
+          const elementId = selectedElement.id || '';
+          const tagName = selectedElement.tagName.toLowerCase();
+          const className = selectedElement.className;
+          const selector = getSelector(selectedElement);
+          const innerText = selectedElement.innerText.substring(0, 100);
+          
+          // Get useful attributes
+          const attributes = {};
+          ['src', 'href', 'placeholder', 'type', 'name', 'value', 'alt'].forEach(attr => {
+             if (selectedElement.hasAttribute(attr)) {
+               attributes[attr] = selectedElement.getAttribute(attr);
+             }
+          });
+          
+          console.log('[VisualEditor] Selected:', tagName, elementId, selector);
+          
+          // Helper to find React Fiber
+          const getReactFiber = (el) => {
+            for (const key in el) {
+              if (key.startsWith('__reactFiber$')) {
+                return el[key];
+              }
+            }
+            return null;
+          };
+
+          // Helper to get source from fiber
+          const getSource = (el) => {
+            let fiber = getReactFiber(el);
+            while (fiber) {
+              if (fiber._debugSource) {
+                return fiber._debugSource;
+              }
+              // Also check 'return' (parent) if not found on current node
+              fiber = fiber.return;
+            }
+            return null;
+          };
+
+          const source = getSource(selectedElement);
+          console.log('[VisualEditor] Source:', source);
+          
+          // Send selection to parent
+          window.parent.postMessage({
+            type: 'visual-editor:selected',
+            elementId,
+            tagName,
+            className,
+            selector,
+            innerText,
+            attributes,
+            source // { fileName, lineNumber }
+          }, '*');
+        }, true);
+      })();
+    `;
+
 
 /**
  * Load project into WebContainer and start dev server
@@ -311,16 +479,32 @@ export async function loadProject(
 
     // INJECT SCREENSHOT HELPER: Always inject to enable screenshot capture
     files['screenshot-helper.js'] = SCREENSHOT_HELPER_SCRIPT;
-    if (files['index.html'] && !files['index.html'].includes('screenshot-helper.js')) {
-      files['index.html'] = files['index.html'].replace(
-        '</body>',
-        '<script src="./screenshot-helper.js"></script></body>'
-      );
-      log('[WebContainer] Screenshot helper injected');
-    }
 
-    // OPTIMIZATION 2: Lazy load visual editor (only add if needed, skip for now)
-    // files['visual-editor-helper.js'] = VISUAL_EDITOR_SCRIPT;
+    // INJECT VISUAL EDITOR HELPER: Always inject to enable visual editing mode
+    files['visual-editor-helper.js'] = VISUAL_EDITOR_SCRIPT;
+
+    if (files['index.html']) {
+      let htmlContent = files['index.html'];
+
+      // Inject screenshot helper if not already present
+      if (!htmlContent.includes('screenshot-helper.js')) {
+        htmlContent = htmlContent.replace(
+          '</body>',
+          '<script src="./screenshot-helper.js"></script></body>'
+        );
+      }
+
+      // Inject visual editor helper if not already present
+      if (!htmlContent.includes('visual-editor-helper.js')) {
+        htmlContent = htmlContent.replace(
+          '</body>',
+          '<script src="./visual-editor-helper.js"></script></body>'
+        );
+      }
+
+      files['index.html'] = htmlContent;
+      log('[WebContainer] Screenshot helper and Visual Editor injected');
+    }
 
     // OPTIMIZATION 4: Fast file tree conversion (already optimized)
     log('[WebContainer] Preparing files...');

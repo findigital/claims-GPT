@@ -105,7 +105,7 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
     useEffect(() => {
       if (!iframeRef.current?.contentWindow || !previewUrl) return;
 
-      // Small delay to ensure iframe is fully loaded
+      // Delay to ensure iframe and visual-editor-helper.js are fully loaded
       const timer = setTimeout(() => {
         if (iframeRef.current?.contentWindow) {
           console.log('[PreviewPanel] Sending visual mode state to iframe:', isVisualMode);
@@ -114,7 +114,7 @@ export const PreviewPanel = forwardRef<PreviewPanelRef, PreviewPanelProps>(
             enabled: isVisualMode
           }, '*');
         }
-      }, 500);
+      }, 2000); // Increased delay to ensure visual-editor-helper.js is loaded
 
       return () => clearTimeout(timer);
     }, [isVisualMode, previewUrl]);
