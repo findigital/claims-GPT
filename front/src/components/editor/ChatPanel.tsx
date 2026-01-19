@@ -181,8 +181,17 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                 },
               }));
 
-              // Merge messages and commits, sort by timestamp
-              const allMessages = [...loadedMessages, ...commitMessages].sort(
+              // Merge messages and commits, removing duplicates by ID
+              const messageMap = new Map<string, Message>();
+
+              // Add loaded messages first
+              loadedMessages.forEach(msg => messageMap.set(msg.id, msg));
+
+              // Add commit messages (will overwrite if duplicate ID exists)
+              commitMessages.forEach(msg => messageMap.set(msg.id, msg));
+
+              // Convert back to array and sort by timestamp
+              const allMessages = Array.from(messageMap.values()).sort(
                 (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
               );
 

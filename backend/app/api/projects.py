@@ -563,9 +563,19 @@ def apply_visual_edit(project_id: int, edit_data: dict = Body(...), db: Session 
     if not style_changes and class_name is None:
         raise HTTPException(status_code=400, detail="At least one of style_changes or class_name must be provided")
 
-    result = ProjectService.apply_visual_edits(
-        db, project_id, MOCK_USER_ID, filepath, element_selector, style_changes, class_name
-    )
+    # Store original_class_name in a temporary attribute for the service to access
+    original_class_name = edit_data.get("original_class_name")
+    if original_class_name:
+        ProjectService.current_edit_data = {"original_class_name": original_class_name}
+
+    try:
+        result = ProjectService.apply_visual_edits(
+            db, project_id, MOCK_USER_ID, filepath, element_selector, style_changes, class_name
+        )
+    finally:
+        # Clean up temporary data
+        if hasattr(ProjectService, 'current_edit_data'):
+            delattr(ProjectService, 'current_edit_data')
 
     return result
 

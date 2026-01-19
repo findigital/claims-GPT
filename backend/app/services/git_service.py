@@ -208,7 +208,8 @@ build/
     @staticmethod
     def restore_commit(project_id: int, commit_hash: str) -> bool:
         """
-        Restore project to a specific commit (creates a new commit)
+        Restore project to a specific commit using hard reset.
+        This will discard all changes after the specified commit.
 
         Returns True if successful, False otherwise
         """
@@ -220,22 +221,31 @@ build/
             return False
 
         try:
-            # Revert to the commit (creates a new commit)
-            subprocess.run(
-                ["git", "revert", "--no-commit", commit_hash], cwd=project_dir, check=True, capture_output=True
-            )
-
-            subprocess.run(
-                ["git", "commit", "-m", f"Restore to commit {commit_hash[:7]}"],
+            # First, verify the commit exists
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", commit_hash],
                 cwd=project_dir,
                 check=True,
                 capture_output=True,
+                encoding="utf-8",
+                errors="replace"
+            )
+
+            # Hard reset to the commit (discards all changes after it)
+            subprocess.run(
+                ["git", "reset", "--hard", commit_hash],
+                cwd=project_dir,
+                check=True,
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace"
             )
 
             return True
 
         except subprocess.CalledProcessError as e:
-            print(f"Git restore failed: {e}")
+            stderr = e.stderr.decode('utf-8', errors='replace') if isinstance(e.stderr, bytes) else str(e.stderr)
+            print(f"Git restore failed: {stderr}")
             return False
 
     @staticmethod

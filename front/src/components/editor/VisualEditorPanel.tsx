@@ -297,9 +297,25 @@ export const VisualEditorPanel: React.FC<VisualEditorPanelProps> = ({
             console.log('[VisualEditor] Original path:', selectedElementFilepath);
             console.log('[VisualEditor] Cleaned path:', relativePath);
 
+            // Build a more specific selector to target the exact element
+            // Use className if available to create a unique selector
+            let elementSelector = selectedElementTagName;
+            if (selectedElement?.className && !hasClassNameChanges) {
+                // Only use className as selector if we're not changing it
+                // Use the first class for better specificity
+                const firstClass = selectedElement.className.split(' ')[0];
+                if (firstClass) {
+                    elementSelector = `${selectedElementTagName}.${firstClass}`;
+                }
+            } else if (selectedElement?.elementId) {
+                // Use ID if available (most specific)
+                elementSelector = `${selectedElementTagName}#${selectedElement.elementId}`;
+            }
+
             const payload: any = {
                 filepath: relativePath,
-                element_selector: selectedElementTagName,
+                element_selector: elementSelector,
+                original_class_name: selectedElement?.className, // Send original className for backend to match
             };
 
             if (hasStyleChanges) {

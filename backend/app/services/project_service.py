@@ -236,14 +236,23 @@ class ProjectService:
         modified_content = content
         changes_applied = {}
 
+        # Get original className from edit_data if available
+        original_class_name = None
+        if hasattr(ProjectService, 'current_edit_data'):
+            original_class_name = getattr(ProjectService, 'current_edit_data', {}).get('original_class_name')
+
         # Apply style changes if provided
         if style_changes:
-            modified_content = ProjectService._apply_styles_to_jsx(modified_content, element_selector, style_changes)
+            modified_content = ProjectService._apply_styles_to_jsx(
+                modified_content, element_selector, style_changes, original_class_name
+            )
             changes_applied['styles'] = style_changes
 
         # Apply className changes if provided
         if class_name is not None:
-            modified_content = ProjectService._apply_classname_to_jsx(modified_content, element_selector, class_name)
+            modified_content = ProjectService._apply_classname_to_jsx(
+                modified_content, element_selector, class_name, original_class_name
+            )
             changes_applied['className'] = class_name
 
         if modified_content == content:
@@ -269,15 +278,16 @@ class ProjectService:
         }
 
     @staticmethod
-    def _apply_styles_to_jsx(content: str, element_selector: str, style_changes: dict) -> str:
+    def _apply_styles_to_jsx(content: str, element_selector: str, style_changes: dict, original_class_name: str = None) -> str:
         """
         Apply style changes to JSX/TSX content.
-        Adds inline style attribute or modifies existing one.
+        Supports specific selectors: tagname, tagname.classname, or tagname#id
 
         Args:
             content: File content
-            element_selector: Element tag name (e.g., 'button', 'div', 'Button')
+            element_selector: Element selector (e.g., 'button', 'div.container', 'Button#main')
             style_changes: Dict of CSS properties to apply
+            original_class_name: Original className to match (for more specificity)
 
         Returns:
             Modified content with styles applied
@@ -292,26 +302,66 @@ class ProjectService:
 
         react_styles = {to_camel_case(k): v for k, v in style_changes.items()}
 
-        # Pattern to find the FIRST JSX opening tag with the given element name
-        # This matches: <tagname ... > or <tagname ... />
-        # We use a more careful approach to avoid breaking JSX syntax
-        tag_pattern = rf"<{element_selector}(?:\s+[^>]*?)?"
+        # Parse selector to extract tag name, class, and/or id
+        tag_name = element_selector
+        class_filter = None
+        id_filter = None
 
-        # Find the first occurrence
-        match = re.search(tag_pattern, content)
-        if not match:
+        if '.' in element_selector:
+            tag_name, class_filter = element_selector.split('.', 1)
+        elif '#' in element_selector:
+            tag_name, id_filter = element_selector.split('#', 1)
+
+        # Pattern to find JSX opening tag with the given element name
+        tag_pattern = rf"<{tag_name}(?:\s+[^>]*?)?"
+
+        # Find all occurrences and filter by className or id
+        matches = list(re.finditer(tag_pattern, content))
+
+        target_match = None
+
+        for match in matches:
+            tag_start = match.start()
+            # Find where this tag ends (> or />)
+            tag_end_match = re.search(r"(?:>|/>)", content[tag_start:])
+            if not tag_end_match:
+                continue
+
+            tag_full_end = tag_start + tag_end_match.end()
+            tag_content = content[tag_start:tag_full_end]
+
+            # Check if this match has the required className or id
+            if class_filter:
+                # Look for className attribute containing the filter
+                class_match = re.search(r'className=(?:"([^"]*)"|{`([^`]*)`}|{\'([^\']*)\'})', tag_content)
+                if class_match:
+                    class_value = class_match.group(1) or class_match.group(2) or class_match.group(3)
+                    if class_filter in class_value.split():
+                        target_match = (match, tag_start, tag_full_end, tag_content)
+                        break
+            elif id_filter:
+                # Look for id attribute
+                id_match = re.search(rf'id=(?:"{id_filter}"|{{\'{id_filter}\'}})', tag_content)
+                if id_match:
+                    target_match = (match, tag_start, tag_full_end, tag_content)
+                    break
+            elif original_class_name:
+                # Try to match by original className if provided
+                class_match = re.search(r'className=(?:"([^"]*)"|{`([^`]*)`}|{\'([^\']*)\'})', tag_content)
+                if class_match:
+                    class_value = class_match.group(1) or class_match.group(2) or class_match.group(3)
+                    if class_value == original_class_name:
+                        target_match = (match, tag_start, tag_full_end, tag_content)
+                        break
+            else:
+                # No filter, use first match
+                target_match = (match, tag_start, tag_full_end, tag_content)
+                break
+
+        if not target_match:
             return content
 
-        tag_start = match.start()
-        tag_end_pattern = r"(?:>|/>)"
-
-        # Find where this tag ends (> or />)
-        tag_end_match = re.search(tag_end_pattern, content[tag_start:])
-        if not tag_end_match:
-            return content
-
-        tag_full_end = tag_start + tag_end_match.end()
-        tag_content = content[tag_start:tag_full_end]
+        _, tag_start, tag_full_end, tag_content = target_match
 
         # Check if there's already a style attribute
         existing_style_match = re.search(r'style=\{\{([^}]*)\}\}', tag_content)
@@ -345,7 +395,7 @@ class ProjectService:
 
             # Find a good place to insert it - right after the tag name
             # Insert after the tag name and any whitespace
-            insert_pos = len(f"<{element_selector}")
+            insert_pos = len(f"<{tag_name}")
             new_tag_content = tag_content[:insert_pos] + new_style_attr + tag_content[insert_pos:]
 
         # Replace the original tag with the modified one
@@ -354,39 +404,82 @@ class ProjectService:
         return modified_content
 
     @staticmethod
-    def _apply_classname_to_jsx(content: str, element_selector: str, class_name: str) -> str:
+    def _apply_classname_to_jsx(content: str, element_selector: str, class_name: str, original_class_name: str = None) -> str:
         """
         Apply className changes to JSX/TSX content.
-        Replaces the className attribute value.
+        Supports specific selectors: tagname, tagname.classname, or tagname#id
 
         Args:
             content: File content
-            element_selector: Element tag name (e.g., 'button', 'div', 'Button')
+            element_selector: Element selector (e.g., 'button', 'div.container', 'Button#main')
             class_name: New className string
+            original_class_name: Original className to match (for more specificity)
 
         Returns:
             Modified content with className applied
         """
         import re
 
-        # Pattern to find the FIRST JSX opening tag with the given element name
-        tag_pattern = rf"<{element_selector}(?:\s+[^>]*?)?"
+        # Parse selector to extract tag name, class, and/or id
+        tag_name = element_selector
+        class_filter = None
+        id_filter = None
 
-        # Find the first occurrence
-        match = re.search(tag_pattern, content)
-        if not match:
+        if '.' in element_selector:
+            tag_name, class_filter = element_selector.split('.', 1)
+        elif '#' in element_selector:
+            tag_name, id_filter = element_selector.split('#', 1)
+
+        # Pattern to find JSX opening tag with the given element name
+        tag_pattern = rf"<{tag_name}(?:\s+[^>]*?)?"
+
+        # Find all occurrences and filter by className or id
+        matches = list(re.finditer(tag_pattern, content))
+
+        target_match = None
+
+        for match in matches:
+            tag_start = match.start()
+            # Find where this tag ends (> or />)
+            tag_end_match = re.search(r"(?:>|/>)", content[tag_start:])
+            if not tag_end_match:
+                continue
+
+            tag_full_end = tag_start + tag_end_match.end()
+            tag_content = content[tag_start:tag_full_end]
+
+            # Check if this match has the required className or id
+            if class_filter:
+                # Look for className attribute containing the filter
+                class_match = re.search(r'className=(?:"([^"]*)"|{`([^`]*)`}|{\'([^\']*)\'})', tag_content)
+                if class_match:
+                    class_value = class_match.group(1) or class_match.group(2) or class_match.group(3)
+                    if class_filter in class_value.split():
+                        target_match = (match, tag_start, tag_full_end, tag_content)
+                        break
+            elif id_filter:
+                # Look for id attribute
+                id_match = re.search(rf'id=(?:"{id_filter}"|{{\'{id_filter}\'}})', tag_content)
+                if id_match:
+                    target_match = (match, tag_start, tag_full_end, tag_content)
+                    break
+            elif original_class_name:
+                # Try to match by original className if provided
+                class_match = re.search(r'className=(?:"([^"]*)"|{`([^`]*)`}|{\'([^\']*)\'})', tag_content)
+                if class_match:
+                    class_value = class_match.group(1) or class_match.group(2) or class_match.group(3)
+                    if class_value == original_class_name:
+                        target_match = (match, tag_start, tag_full_end, tag_content)
+                        break
+            else:
+                # No filter, use first match
+                target_match = (match, tag_start, tag_full_end, tag_content)
+                break
+
+        if not target_match:
             return content
 
-        tag_start = match.start()
-        tag_end_pattern = r"(?:>|/>)"
-
-        # Find where this tag ends (> or />)
-        tag_end_match = re.search(tag_end_pattern, content[tag_start:])
-        if not tag_end_match:
-            return content
-
-        tag_full_end = tag_start + tag_end_match.end()
-        tag_content = content[tag_start:tag_full_end]
+        _, tag_start, tag_full_end, tag_content = target_match
 
         # Check if there's already a className attribute
         # Matches: className="..." or className='...' or className={...}
