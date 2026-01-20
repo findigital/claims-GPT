@@ -26,7 +26,6 @@ from app.schemas import (
 from app.services import ProjectService
 from app.services.filesystem_service import FileSystemService
 from app.services.git_service import GitService
-from app.services.screenshot_service import ScreenshotService
 
 router = APIRouter()
 
@@ -493,42 +492,6 @@ def sync_with_remote(project_id: int, db: Session = Depends(get_db)):
     result = GitService.sync_with_remote(project_id)
 
     return {"project_id": project_id, **result}
-
-
-@router.post("/{project_id}/thumbnail")
-def update_project_thumbnail(project_id: int, data: dict = Body(...), db: Session = Depends(get_db)):
-    """
-    Update project thumbnail by capturing screenshot of preview URL (DEPRECATED - use /thumbnail/upload)
-
-    Args:
-        project_id: The project ID
-        data: JSON body with 'url' field containing the preview URL to capture
-
-    Returns:
-        Success status and project_id
-    """
-    # Verify project exists
-    project = ProjectService.get_project(db, project_id, MOCK_USER_ID)
-
-    preview_url = data.get("url", "")
-
-    if not preview_url:
-        raise HTTPException(status_code=400, detail="Preview URL is required")
-
-    # Capture screenshot using Playwright
-    thumbnail_data = ScreenshotService.capture_screenshot_sync(preview_url)
-
-    if not thumbnail_data:
-        raise HTTPException(
-            status_code=500, detail="Failed to capture screenshot. Please ensure the preview URL is accessible."
-        )
-
-    # Update project thumbnail
-    project.thumbnail = thumbnail_data
-    db.commit()
-    db.refresh(project)
-
-    return {"success": True, "message": "Thumbnail updated successfully", "project_id": project_id}
 
 
 @router.post("/{project_id}/thumbnail/upload")

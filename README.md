@@ -201,9 +201,6 @@ cp .env.example .env
 
 # Initialize database
 python init_db.py
-
-# Install Playwright browsers (for screenshots)
-playwright install chromium
 ```
 
 #### 3. Frontend Setup
