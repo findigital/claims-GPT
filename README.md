@@ -14,6 +14,8 @@
 
 [Features](#-key-features) • [Demo](#-screenshots) • [Getting Started](#-quick-start) • [Architecture](#-architecture) • [Documentation](#-documentation)
 
+![DaveLovable Platform](docs/img/1_build_app.png)
+
 </div>
 
 ---
@@ -113,6 +115,51 @@ Upload design mockups, screenshots, or PDFs and ask the AI to recreate them. The
 | **Deployment** | ⚠️ Manual | ✅ Vercel/Netlify | ✅ Vercel | ✅ Google Cloud |
 
 **Legend:** ✅ Full support • ⚠️ Partial/In progress • ❌ Not supported
+
+
+---
+
+## 📸 Example Projects Built with DaveLovable
+
+DaveLovable can generate complete, production-ready React applications in minutes. Here are some examples:
+
+### Project Management Dashboard
+
+![All Projects View](docs/img/2_all_projects.png)
+
+Multi-project workspace where you can manage all your AI-generated applications. Each project includes full Git history, file management, and live preview capabilities.
+
+---
+
+### Social Media Platform (Facebook Clone)
+
+![Facebook Clone Example](docs/img/3_a_facebook_clon_example.png)
+
+A fully functional social media platform with modern UI, built entirely by AI in minutes. Features include responsive design, component-based architecture, and Tailwind CSS styling.
+
+**Generated features:**
+
+- News feed layout
+- Post components with interactions
+- Navigation sidebar
+- Responsive design for mobile/tablet/desktop
+- Modern UI with gradients and shadows
+
+---
+
+### Real Estate Rental Platform
+
+![House Rental Example](docs/img/4_a_rent_house_example.png.png)
+
+Complete rental property marketplace application with search, filters, and property listings. Demonstrates AI's ability to create complex, multi-section layouts.
+
+**Generated features:**
+
+- Property search and filters
+- Card-based listing layouts
+- Hero sections with CTAs
+- Responsive grid systems
+- Professional color schemes
 
 ---
 
