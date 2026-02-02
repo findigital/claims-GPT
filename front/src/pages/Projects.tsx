@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useProjects, useCreateProject, useDeleteProject } from '@/hooks/useProjects';
 import { Button } from '@/components/ui/button';
-import { Plus, Folder, ArrowRight } from 'lucide-react';
+import { Plus, Folder, ArrowRight, Sparkles } from 'lucide-react';
 import { ProjectCard } from '@/components/ProjectCard';
 import { useState } from 'react';
 import {
