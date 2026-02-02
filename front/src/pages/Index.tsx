@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, ArrowUp, Sparkles, Loader2, Image as ImageIcon, FileText, X } from "lucide-react";
+import { Plus, ArrowUp, Loader2, Image as ImageIcon, FileText, X } from "lucide-react";
 import { useCreateProject } from "@/hooks/useProjects";
 import { useProjects } from "@/hooks/useProjects";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +9,7 @@ import Footer from "@/components/Footer";
 import FeaturesSection from "@/components/FeaturesSection";
 import HowItWorksSection from "@/components/HowItWorksSection";
 import DocsSection from "@/components/DocsSection";
+import { ProjectCard } from "@/components/ProjectCard";
 
 interface FileAttachment {
   id: string;
@@ -487,38 +488,13 @@ const Index = () => {
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              {projects?.slice(0, displayedProjects).map((project) => (
-                <div
+              {projects?.slice(0, displayedProjects).map((project, index) => (
+                <ProjectCard
                   key={project.id}
-                  onClick={() => navigate(`/editor/${project.id}`)}
-                  className="group relative bg-background border border-border rounded-lg overflow-hidden cursor-pointer hover:border-primary/50 hover:shadow-xl transition-all duration-300"
-                >
-                  {project.thumbnail ? (
-                    <img
-                      src={project.thumbnail}
-                      alt={project.name}
-                      className="w-full h-48 object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-48 bg-gradient-to-br from-primary/20 to-purple-500/20 flex items-center justify-center">
-                      <Sparkles className="w-12 h-12 text-primary/40" />
-                    </div>
-                  )}
-
-                  <div className="p-4">
-                    <h3 className="font-semibold text-foreground truncate mb-1">
-                      {project.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {project.description || "No description"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {new Date(project.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-
-                  <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
+                  project={project}
+                  index={index}
+                  onDelete={() => {}} // No delete in gallery view
+                />
               ))}
             </div>
 

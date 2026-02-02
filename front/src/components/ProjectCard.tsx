@@ -74,12 +74,12 @@ export const ProjectCard = ({ project, index, onDelete }: ProjectCardProps) => {
   return (
     <div
       ref={cardRef}
-      className="group relative"
+      className="group relative h-full"
       style={{
         animation: `fadeInUp 0.5s ease-out ${index * 0.1}s both`
       }}
     >
-      <Link to={`/editor/${project.id}`}>
+      <Link to={`/editor/${project.id}`} className="block h-full">
         <div className="glass rounded-2xl overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
           {/* Thumbnail */}
           <div className="relative h-48 bg-gradient-to-br from-primary/20 to-purple-500/20 overflow-hidden">
