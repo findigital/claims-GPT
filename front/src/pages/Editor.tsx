@@ -471,11 +471,11 @@ const Editor = () => {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Main Content with Resizable Panels */}
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
+      <ResizablePanelGroup id="main-panel-group" direction="horizontal" className="flex-1">
         {/* Chat Panel */}
         {showChat && (
           <>
-            <ResizablePanel defaultSize={35} minSize={20} maxSize={35}>
+            <ResizablePanel id="chat-panel" defaultSize={35} minSize={20} maxSize={35}>
               <div className="h-full relative">
                 <ChatPanel
                   ref={chatPanelRef}
@@ -511,7 +511,7 @@ const Editor = () => {
         )}
 
         {/* File Explorer + Editor + Preview */}
-        <ResizablePanel defaultSize={showChat ? 75 : 100}>
+        <ResizablePanel id="main-content-panel" defaultSize={showChat ? 75 : 100}>
           <div className="h-full flex flex-col">
             {/* Toggle Chat Button - Show when chat is hidden */}
             {!showChat && (
@@ -532,11 +532,11 @@ const Editor = () => {
               </div>
             )}
 
-            <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanelGroup id="explorer-editor-panel-group" direction="horizontal" className="flex-1">
               {/* File Explorer */}
               {showExplorer && activeView !== 'preview' && (
                 <>
-                  <ResizablePanel defaultSize={18} minSize={15} maxSize={30}>
+                  <ResizablePanel id="explorer-panel" defaultSize={18} minSize={15} maxSize={30}>
                     <FileExplorer
                       projectId={Number(projectId)}
                       selectedFile={selectedFile?.name || ''}
@@ -551,7 +551,7 @@ const Editor = () => {
               )}
 
               {/* Editor & Preview Area */}
-              <ResizablePanel defaultSize={showExplorer && activeView !== 'preview' ? 82 : 100}>
+              <ResizablePanel id="editor-preview-container-panel" defaultSize={showExplorer && activeView !== 'preview' ? 82 : 100}>
                 <div className="h-full flex flex-col">
                   <EditorTabs
                     activeView={activeView}
@@ -569,10 +569,10 @@ const Editor = () => {
                     onDownloadProject={handleDownloadProject}
                   />
 
-                  <ResizablePanelGroup direction="horizontal" className="flex-1">
+                  <ResizablePanelGroup id="code-preview-panel-group" direction="horizontal" className="flex-1">
                     {/* Code Editor */}
                     {(activeView === 'code' || activeView === 'split') && (
-                      <ResizablePanel defaultSize={activeView === 'split' ? 50 : 100}>
+                      <ResizablePanel id="code-editor-panel" defaultSize={activeView === 'split' ? 50 : 100}>
                         <CodeEditor
                           selectedFile={selectedFile ? { ...selectedFile, content: editedContent } : null}
                           isTyping={isTyping}
@@ -592,7 +592,7 @@ const Editor = () => {
 
                     {/* Preview */}
                     {(activeView === 'preview' || activeView === 'split') && (
-                      <ResizablePanel defaultSize={activeView === 'split' ? 50 : 100}>
+                      <ResizablePanel id="preview-panel" defaultSize={activeView === 'split' ? 50 : 100}>
                         <PreviewPanel
                           ref={previewPanelRef}
                           projectId={Number(projectId)}

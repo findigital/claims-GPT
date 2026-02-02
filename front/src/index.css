@@ -201,3 +201,41 @@
 .delay-400 { animation-delay: 400ms; }
 .delay-500 { animation-delay: 500ms; }
 .delay-600 { animation-delay: 600ms; }
+
+/* Resizable Panel Fixes */
+/* Fix cursor for horizontal resize handles */
+[data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id] {
+  cursor: col-resize !important;
+}
+
+/* Fix cursor for vertical resize handles */
+[data-panel-group-direction="vertical"] > [data-panel-resize-handle-id] {
+  cursor: row-resize !important;
+}
+
+/* Increase hit area for resize handles */
+[data-panel-resize-handle-id] {
+  position: relative;
+}
+
+/* Horizontal handles - wider hit area */
+[data-panel-group-direction="horizontal"] > [data-panel-resize-handle-id]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+  cursor: col-resize;
+}
+
+/* Vertical handles - taller hit area */
+[data-panel-group-direction="vertical"] > [data-panel-resize-handle-id]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  bottom: -4px;
+  cursor: row-resize;
+}
