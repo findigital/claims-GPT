@@ -471,11 +471,11 @@ const Editor = () => {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Main Content with Resizable Panels */}
-      <ResizablePanelGroup id="main-panel-group" direction="horizontal" className="flex-1">
+      <ResizablePanelGroup id="main-panel-group" direction="horizontal" className="flex-1" autoSaveId="main-layout">
         {/* Chat Panel */}
         {showChat && (
           <>
-            <ResizablePanel id="chat-panel" defaultSize={35} minSize={20} maxSize={35}>
+            <ResizablePanel id="chat-panel" defaultSize={35} minSize={20} maxSize={35} order={1}>
               <div className="h-full relative">
                 <ChatPanel
                   ref={chatPanelRef}
@@ -511,7 +511,7 @@ const Editor = () => {
         )}
 
         {/* File Explorer + Editor + Preview */}
-        <ResizablePanel id="main-content-panel" defaultSize={showChat ? 75 : 100}>
+        <ResizablePanel id="main-content-panel" defaultSize={showChat ? 75 : 100} order={2}>
           <div className="h-full flex flex-col">
             {/* Toggle Chat Button - Show when chat is hidden */}
             {!showChat && (
@@ -532,11 +532,11 @@ const Editor = () => {
               </div>
             )}
 
-            <ResizablePanelGroup id="explorer-editor-panel-group" direction="horizontal" className="flex-1">
+            <ResizablePanelGroup id="explorer-editor-panel-group" direction="horizontal" className="flex-1" autoSaveId="explorer-editor-layout">
               {/* File Explorer */}
               {showExplorer && activeView !== 'preview' && (
                 <>
-                  <ResizablePanel id="explorer-panel" defaultSize={18} minSize={15} maxSize={30}>
+                  <ResizablePanel id="explorer-panel" defaultSize={18} minSize={15} maxSize={30} order={1}>
                     <FileExplorer
                       projectId={Number(projectId)}
                       selectedFile={selectedFile?.name || ''}
@@ -551,7 +551,7 @@ const Editor = () => {
               )}
 
               {/* Editor & Preview Area */}
-              <ResizablePanel id="editor-preview-container-panel" defaultSize={showExplorer && activeView !== 'preview' ? 82 : 100}>
+              <ResizablePanel id="editor-preview-container-panel" defaultSize={showExplorer && activeView !== 'preview' ? 82 : 100} order={2}>
                 <div className="h-full flex flex-col">
                   <EditorTabs
                     activeView={activeView}
