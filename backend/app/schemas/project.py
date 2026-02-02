@@ -46,5 +46,21 @@ class Project(ProjectInDB):
     pass
 
 
+class ProjectSummary(BaseModel):
+    """Lightweight project schema for list views (excludes thumbnail for performance)"""
+    id: int
+    name: str
+    description: Optional[str] = None
+    status: ProjectStatus
+    owner_id: int
+    created_at: datetime
+    updated_at: datetime
+    template: str = "react-vite"
+    framework: str = "react"
+
+    class Config:
+        from_attributes = True
+
+
 class ProjectWithFiles(Project):
     files: List[ProjectFileType] = []

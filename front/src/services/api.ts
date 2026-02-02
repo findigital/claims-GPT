@@ -199,6 +199,11 @@ export const projectApi = {
     });
   },
 
+  // Get project thumbnail (lazy loading)
+  getThumbnail: async (projectId: number): Promise<{ project_id: number; thumbnail: string | null }> => {
+    return fetchApi(`/projects/${projectId}/thumbnail`);
+  },
+
   // Apply visual edits directly to a file
   applyVisualEdit: async (
     projectId: number,

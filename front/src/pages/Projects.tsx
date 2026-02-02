@@ -1,14 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useProjects, useCreateProject, useDeleteProject } from '@/hooks/useProjects';
 import { Button } from '@/components/ui/button';
-import { Plus, Folder, Calendar, Trash2, MoreVertical, Sparkles, ArrowRight } from 'lucide-react';
+import { Plus, Folder, ArrowRight } from 'lucide-react';
+import { ProjectCard } from '@/components/ProjectCard';
 import { useState } from 'react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -96,16 +91,8 @@ const Projects = () => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading projects...</p>
-        </div>
-      </div>
-    );
-  }
+  // Show skeleton UI during loading for better UX
+  const showSkeleton = isLoading && !projects;
 
   return (
     <main className="min-h-screen bg-background">
@@ -154,7 +141,22 @@ const Projects = () => {
             </div>
 
             {/* Projects Grid */}
-            {!projects || projects.length === 0 ? (
+            {showSkeleton ? (
+              /* Skeleton Loading State */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="glass rounded-2xl overflow-hidden">
+                    <div className="h-48 bg-muted/50 animate-pulse" />
+                    <div className="p-6 space-y-3">
+                      <div className="h-6 bg-muted/50 rounded animate-pulse w-3/4" />
+                      <div className="h-4 bg-muted/30 rounded animate-pulse w-full" />
+                      <div className="h-4 bg-muted/30 rounded animate-pulse w-2/3" />
+                      <div className="h-3 bg-muted/20 rounded animate-pulse w-1/2 mt-4" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !projects || projects.length === 0 ? (
               <div className="text-center py-20 animate-fade-in">
                 <div className="glass rounded-3xl p-12 max-w-2xl mx-auto glow-accent">
                   <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
@@ -178,78 +180,12 @@ const Projects = () => {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in-up delay-200">
                 {sortedProjects?.map((project, index) => (
-                  <div
+                  <ProjectCard
                     key={project.id}
-                    className="group relative"
-                    style={{
-                      animation: `fadeInUp 0.5s ease-out ${index * 0.1}s both`
-                    }}
-                  >
-                    <Link to={`/editor/${project.id}`}>
-                      <div className="glass rounded-2xl overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-                        {/* Thumbnail */}
-                        <div className="relative h-48 bg-gradient-to-br from-primary/20 to-purple-500/20 overflow-hidden">
-                          {project.thumbnail ? (
-                            <img
-                              src={project.thumbnail}
-                              alt={project.name}
-                              className="w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-110"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <Sparkles className="w-16 h-16 text-primary/40 animate-pulse" />
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                          {/* Status Badge */}
-                          <div className="absolute top-3 right-3">
-                            <span className="text-xs px-3 py-1.5 rounded-full glass text-foreground capitalize font-medium">
-                              {project.status}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Project Details */}
-                        <div className="p-6">
-                          <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors line-clamp-1">
-                            {project.name}
-                          </h3>
-                          <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                            {project.description || 'No description available'}
-                          </p>
-                          <div className="flex items-center text-xs text-muted-foreground">
-                            <Calendar className="w-3.5 h-3.5 mr-1.5" />
-                            {new Date(project.created_at).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-
-                    {/* Actions Menu */}
-                    <div className="absolute top-52 right-3 z-10">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <button className="p-2 glass hover:bg-background/80 rounded-lg transition-all opacity-0 group-hover:opacity-100">
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) => handleDeleteProject(project.id, project.name, e)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Project
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
+                    project={project}
+                    index={index}
+                    onDelete={handleDeleteProject}
+                  />
                 ))}
               </div>
             )}

@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.models import Project, ProjectFile
 from app.schemas import ProjectCreate, ProjectFileCreate, ProjectUpdate
@@ -61,9 +61,16 @@ class ProjectService:
 
     @staticmethod
     def get_projects(db: Session, owner_id: int, skip: int = 0, limit: int = 100) -> List[Project]:
-        """Get all projects for a user"""
+        """Get all projects for a user (optimized to defer thumbnail loading)"""
 
-        return db.query(Project).filter(Project.owner_id == owner_id).offset(skip).limit(limit).all()
+        return (
+            db.query(Project)
+            .filter(Project.owner_id == owner_id)
+            .options(defer(Project.thumbnail))  # Don't load thumbnail for list view
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
     @staticmethod
     def update_project(db: Session, project_id: int, owner_id: int, project_update: ProjectUpdate) -> Project:

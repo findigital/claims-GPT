@@ -20,6 +20,9 @@ export function useProjects() {
   return useQuery({
     queryKey: projectKeys.list(),
     queryFn: () => projectApi.list(),
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false, // Don't refetch when window regains focus
   });
 }
 

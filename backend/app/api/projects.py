@@ -20,6 +20,7 @@ from app.schemas import (
     ProjectFile,
     ProjectFileCreate,
     ProjectFileUpdate,
+    ProjectSummary,
     ProjectUpdate,
     ProjectWithFiles,
 )
@@ -132,10 +133,17 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     return ProjectService.create_project(db, project, MOCK_USER_ID)
 
 
-@router.get("", response_model=List[Project])
+@router.get("", response_model=List[ProjectSummary])
 def get_projects(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """Get all projects for the current user"""
+    """Get all projects for the current user (lightweight, excludes thumbnails)"""
     return ProjectService.get_projects(db, MOCK_USER_ID, skip, limit)
+
+
+@router.get("/{project_id}/thumbnail")
+def get_project_thumbnail(project_id: int, db: Session = Depends(get_db)):
+    """Get only the thumbnail for a specific project (lazy loading optimization)"""
+    project = ProjectService.get_project(db, project_id, MOCK_USER_ID)
+    return {"project_id": project_id, "thumbnail": project.thumbnail}
 
 
 @router.get("/{project_id}", response_model=ProjectWithFiles)

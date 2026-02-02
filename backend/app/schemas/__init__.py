@@ -8,7 +8,7 @@ from .chat import (
     ChatSessionWithMessages,
 )
 from .file import ProjectFile, ProjectFileCreate, ProjectFileUpdate
-from .project import Project, ProjectCreate, ProjectUpdate, ProjectWithFiles
+from .project import Project, ProjectCreate, ProjectSummary, ProjectUpdate, ProjectWithFiles
 from .user import User, UserCreate, UserInDB, UserUpdate
 
 # Rebuild ProjectWithFiles model to resolve forward references
@@ -27,6 +27,7 @@ __all__ = [
     "ProjectFile",
     "ProjectFileCreate",
     "ProjectFileUpdate",
+    "ProjectSummary",
     "ProjectUpdate",
     "ProjectWithFiles",
     "User",
