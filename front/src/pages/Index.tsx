@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, ArrowUp, Loader2, Image as ImageIcon, FileText, X } from "lucide-react";
+import { Plus, ArrowUp, Loader2, Image as ImageIcon, FileText, X, Sparkles } from "lucide-react";
 import { useCreateProject } from "@/hooks/useProjects";
 import { useProjects } from "@/hooks/useProjects";
 import { useToast } from "@/hooks/use-toast";
