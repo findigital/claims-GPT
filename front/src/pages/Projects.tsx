@@ -111,12 +111,15 @@ const Projects = () => {
     e.preventDefault();
     e.stopPropagation();
 
+    // Get current state before mutation
+    const project = projects?.find(p => p.id === id);
+    const wasFavorite = project?.is_favorite || false;
+
     try {
       await favoriteProject.mutateAsync(id);
-      const project = projects?.find(p => p.id === id);
       toast({
-        title: project?.is_favorite ? "Removed from favorites" : "Added to favorites",
-        description: `${project?.name} has been ${project?.is_favorite ? 'removed from' : 'added to'} favorites.`,
+        title: wasFavorite ? "Removed from favorites" : "Added to favorites",
+        description: `${project?.name} has been ${wasFavorite ? 'removed from' : 'added to'} favorites.`,
       });
     } catch (error) {
       toast({

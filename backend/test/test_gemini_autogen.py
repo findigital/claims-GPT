@@ -4,7 +4,6 @@ This script tests the OpenAI-compatible API with Gemini model
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -165,7 +164,7 @@ async def test_with_config():
     try:
         from app.core.config import settings
 
-        print(f"\nLoaded config:")
+        print("\nLoaded config:")
         print(f"  Model: {settings.GEMINI_MODEL}")
         print(f"  Base URL: {settings.GEMINI_API_BASE_URL}")
         print(f"  API Key: {settings.GEMINI_API_KEY[:20]}...")

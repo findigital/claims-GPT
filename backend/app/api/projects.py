@@ -11,7 +11,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.gemini_client import Gemini3FlashChatCompletionClient
 from app.db import get_db
 from app.schemas import (
@@ -590,7 +589,7 @@ def apply_visual_edit(project_id: int, edit_data: dict = Body(...), db: Session 
     """
     import sys
 
-    sys.stdout.write(f"\n[API] ========== VISUAL EDIT REQUEST ==========\n")
+    sys.stdout.write("\n[API] ========== VISUAL EDIT REQUEST ==========\n")
     sys.stdout.write(f"[API] Project: {project_id}\n")
     sys.stdout.write(f"[API] Edit data: {edit_data}\n")
     sys.stdout.flush()

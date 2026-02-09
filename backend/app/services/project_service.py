@@ -1,5 +1,4 @@
 from typing import List, Optional
-import sys
 import os
 from datetime import datetime
 
@@ -253,7 +252,7 @@ class ProjectService:
 
         from app.services.git_service import GitService
 
-        print(f"\n[SERVICE] ========== APPLY VISUAL EDITS ==========")
+        print("\n[SERVICE] ========== APPLY VISUAL EDITS ==========")
         print(f"[SERVICE] Project ID: {project_id}")
         print(f"[SERVICE] Filepath: {filepath}")
         print(f"[SERVICE] Element selector: {element_selector}")
@@ -281,7 +280,7 @@ class ProjectService:
 
         # Apply style changes if provided
         if style_changes:
-            print(f"[SERVICE] Applying style changes...")
+            print("[SERVICE] Applying style changes...")
             modified_content = ProjectService._apply_styles_to_jsx(
                 modified_content, element_selector, style_changes, original_class_name
             )
@@ -289,7 +288,7 @@ class ProjectService:
 
         # Apply className changes if provided
         if class_name is not None:
-            print(f"[SERVICE] Applying className changes...")
+            print("[SERVICE] Applying className changes...")
             modified_content = ProjectService._apply_classname_to_jsx(
                 modified_content, element_selector, class_name, original_class_name
             )
@@ -449,7 +448,7 @@ class ProjectService:
             debug_log(f"[SERVICE] Selected match #{nth_child} from {len(candidates)} candidates")
         elif len(candidates) > 0:
             target_match = candidates[0]  # Use first match if no nth-child
-            debug_log(f"[SERVICE] Using first match (no nth-child specified)")
+            debug_log("[SERVICE] Using first match (no nth-child specified)")
 
         if not target_match:
             debug_log(f"[SERVICE] ERROR: No target match found! Selector: {element_selector}, OriginalClass: {original_class_name}")
@@ -617,10 +616,10 @@ class ProjectService:
             print(f"[DEBUG] Selected match #{nth_child} from {len(candidates)} candidates")
         elif len(candidates) > 0:
             target_match = candidates[0]  # Use first match if no nth-child
-            print(f"[DEBUG] Using first match (no nth-child specified)")
+            print("[DEBUG] Using first match (no nth-child specified)")
 
         if not target_match:
-            print(f"[DEBUG] [ClassName] No target match found!")
+            print("[DEBUG] [ClassName] No target match found!")
             return content
 
         _, tag_start, tag_full_end, tag_content = target_match

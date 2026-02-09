@@ -146,6 +146,11 @@ async function fetchApi<T>(
     );
   }
 
+  // Handle 204 No Content responses (like DELETE)
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json();
 }
 

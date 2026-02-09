@@ -29,7 +29,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.conditions import MaxMessageTermination
 from autogen_agentchat.teams import RoundRobinGroupChat
-from autogen_core.models import UserMessage
 
 from app.core.gemini_thought_signature_client import GeminiThoughtSignatureClient
 

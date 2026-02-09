@@ -837,7 +837,7 @@ Please analyze the request, create a plan if needed, and implement the solution.
                     "project_id": project_id,
                 },
             }
-            logger.info(f"📁 [Files Ready] ✅ files_ready event SENT - Files written to filesystem, ready for frontend download")
+            logger.info("📁 [Files Ready] ✅ files_ready event SENT - Files written to filesystem, ready for frontend download")
 
             # AUTO-COMMIT: Create Git commit synchronously so we can send the result to frontend
             commit_hash = None

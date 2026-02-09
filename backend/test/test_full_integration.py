@@ -24,7 +24,7 @@ async def test_config_loading():
         assert hasattr(settings, "GEMINI_MODEL"), "GEMINI_MODEL not found in settings"
         assert hasattr(settings, "GEMINI_API_BASE_URL"), "GEMINI_API_BASE_URL not found in settings"
 
-        print(f"\n[SUCCESS] Configuration loaded:")
+        print("\n[SUCCESS] Configuration loaded:")
         print(f"  Model: {settings.GEMINI_MODEL}")
         print(f"  Base URL: {settings.GEMINI_API_BASE_URL}")
         print(f"  API Key configured: {'Yes' if settings.GEMINI_API_KEY else 'No'}")

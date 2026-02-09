@@ -4,7 +4,6 @@ import httpx
 import tiktoken
 from autogen_core.models import SystemMessage, UserMessage
 
-from app.core.config import settings
 from app.core.gemini_client import Gemini3FlashChatCompletionClient
 
 
