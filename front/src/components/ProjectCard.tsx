@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, MoreVertical, Trash2, Sparkles } from 'lucide-react';
+import { Calendar, MoreVertical, Trash2, Sparkles, Star } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,12 +17,14 @@ interface ProjectCardProps {
     status?: string;
     created_at: string;
     thumbnail?: string;
+    is_favorite?: boolean;
   };
   index: number;
   onDelete: (id: number, name: string, e: React.MouseEvent) => void;
+  onToggleFavorite: (id: number, e: React.MouseEvent) => void;
 }
 
-export const ProjectCard = ({ project, index, onDelete }: ProjectCardProps) => {
+export const ProjectCard = ({ project, index, onDelete, onToggleFavorite }: ProjectCardProps) => {
   const [thumbnail, setThumbnail] = useState<string | null>(project.thumbnail || null);
   const [isLoading, setIsLoading] = useState(!project.thumbnail);
   const [isVisible, setIsVisible] = useState(false);
@@ -139,6 +141,12 @@ export const ProjectCard = ({ project, index, onDelete }: ProjectCardProps) => {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => onToggleFavorite(project.id, e)}
+            >
+              <Star className={`w-4 h-4 mr-2 ${project.is_favorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+              {project.is_favorite ? 'Remove from Favorites' : 'Add to Favorites'}
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => onDelete(project.id, project.name, e)}
               className="text-destructive focus:text-destructive"

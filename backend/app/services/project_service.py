@@ -61,12 +61,13 @@ class ProjectService:
 
     @staticmethod
     def get_projects(db: Session, owner_id: int, skip: int = 0, limit: int = 100) -> List[Project]:
-        """Get all projects for a user (optimized to defer thumbnail loading)"""
+        """Get all projects for a user (optimized to defer thumbnail loading, ordered by favorites first)"""
 
         return (
             db.query(Project)
             .filter(Project.owner_id == owner_id)
             .options(defer(Project.thumbnail))  # Don't load thumbnail for list view
+            .order_by(Project.is_favorite.desc(), Project.created_at.desc())  # Favorites first, then by date
             .offset(skip)
             .limit(limit)
             .all()

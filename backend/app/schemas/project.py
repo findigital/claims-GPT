@@ -28,6 +28,7 @@ class ProjectUpdate(BaseModel):
     status: Optional[ProjectStatus] = None
     template: Optional[str] = None
     framework: Optional[str] = None
+    is_favorite: Optional[bool] = None
 
 
 class ProjectInDB(ProjectBase):
@@ -37,6 +38,7 @@ class ProjectInDB(ProjectBase):
     created_at: datetime
     updated_at: datetime
     thumbnail: Optional[str] = None
+    is_favorite: bool = False
 
     class Config:
         from_attributes = True
@@ -57,6 +59,7 @@ class ProjectSummary(BaseModel):
     updated_at: datetime
     template: str = "react-vite"
     framework: str = "react"
+    is_favorite: bool = False
 
     class Config:
         from_attributes = True

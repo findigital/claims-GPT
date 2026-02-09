@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useProjects, useCreateProject, useDeleteProject } from '@/hooks/useProjects';
+import { useProjects, useCreateProject, useDeleteProject, useFavoriteProject } from '@/hooks/useProjects';
 import { Button } from '@/components/ui/button';
 import { Plus, Folder, ArrowRight, Sparkles } from 'lucide-react';
 import { ProjectCard } from '@/components/ProjectCard';
@@ -34,6 +34,7 @@ const Projects = () => {
   const { data: projects, isLoading } = useProjects();
   const createProject = useCreateProject();
   const deleteProject = useDeleteProject();
+  const favoriteProject = useFavoriteProject();
   const { toast } = useToast();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectName, setProjectName] = useState('');
@@ -41,8 +42,13 @@ const Projects = () => {
   const [deleteProjectId, setDeleteProjectId] = useState<number | null>(null);
   const [deleteProjectName, setDeleteProjectName] = useState('');
 
-  // Sort projects by created_at descending (newest first)
+  // Sort projects by favorites first, then by created_at descending (newest first)
   const sortedProjects = projects?.slice().sort((a, b) => {
+    // First, sort by favorite status (favorites first)
+    if (a.is_favorite !== b.is_favorite) {
+      return (b.is_favorite ? 1 : 0) - (a.is_favorite ? 1 : 0);
+    }
+    // Then sort by creation date (newest first)
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
@@ -98,6 +104,26 @@ const Projects = () => {
           variant: "destructive",
         });
       }
+    }
+  };
+
+  const handleToggleFavorite = async (id: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      await favoriteProject.mutateAsync(id);
+      const project = projects?.find(p => p.id === id);
+      toast({
+        title: project?.is_favorite ? "Removed from favorites" : "Added to favorites",
+        description: `${project?.name} has been ${project?.is_favorite ? 'removed from' : 'added to'} favorites.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error updating favorite",
+        description: "There was an error updating the favorite status. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -195,6 +221,7 @@ const Projects = () => {
                     project={project}
                     index={index}
                     onDelete={handleDeleteProject}
+                    onToggleFavorite={handleToggleFavorite}
                   />
                 ))}
               </div>

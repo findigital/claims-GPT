@@ -443,6 +443,27 @@ def checkout_branch(project_id: int, branch_data: dict = Body(...), db: Session 
     }
 
 
+@router.post("/{project_id}/favorite", response_model=Project)
+def toggle_favorite(project_id: int, db: Session = Depends(get_db)):
+    """
+    Toggle the favorite status of a project
+
+    Args:
+        project_id: The project ID
+
+    Returns:
+        Updated project with toggled favorite status
+    """
+    project = ProjectService.get_project(db, project_id, MOCK_USER_ID)
+
+    # Toggle the favorite status
+    project.is_favorite = not project.is_favorite
+    db.commit()
+    db.refresh(project)
+
+    return project
+
+
 @router.get("/{project_id}/git/branch")
 def get_current_branch(project_id: int, db: Session = Depends(get_db)):
     """Get current Git branch or commit hash if in detached HEAD state"""

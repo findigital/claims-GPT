@@ -96,3 +96,21 @@ export function useDeleteProject() {
     },
   });
 }
+
+// Toggle favorite project
+export function useFavoriteProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (projectId: number) => projectApi.toggleFavorite(projectId),
+    onSuccess: (updatedProject) => {
+      // Update the project in cache
+      queryClient.setQueryData(
+        projectKeys.detail(updatedProject.id),
+        updatedProject
+      );
+      // Invalidate list to reflect changes and re-sort
+      queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+    },
+  });
+}

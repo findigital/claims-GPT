@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import relationship
 
@@ -29,6 +29,7 @@ class Project(Base):
     template = Column(String, default="react-vite")
     framework = Column(String, default="react")
     thumbnail = Column(Text, nullable=True)  # Base64 encoded screenshot
+    is_favorite = Column(Boolean, default=False, nullable=False)
 
     # Relationships
     owner = relationship("User", back_populates="projects")

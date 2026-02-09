@@ -13,6 +13,7 @@ export interface Project {
   created_at: string;
   updated_at: string;
   thumbnail?: string;
+  is_favorite?: boolean;
   files?: ProjectFile[];
 }
 
@@ -212,6 +213,13 @@ export const projectApi = {
     return fetchApi<VisualEditResponse>(`/projects/${projectId}/visual-edit`, {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  },
+
+  // Toggle favorite status
+  toggleFavorite: async (projectId: number): Promise<Project> => {
+    return fetchApi<Project>(`/projects/${projectId}/favorite`, {
+      method: 'POST',
     });
   },
 };
