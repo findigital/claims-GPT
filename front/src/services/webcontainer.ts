@@ -82,7 +82,6 @@ const SCREENSHOT_HELPER_SCRIPT = `
       const hasContent = root.textContent && root.textContent.trim().length > 100;
       if (hasContent) {
         isAppReady = true;
-        log('[Screenshot Helper] App is ready for capture');
         return true;
       }
     }
@@ -111,7 +110,6 @@ const SCREENSHOT_HELPER_SCRIPT = `
       try {
         // Wait for app to be ready
         if (!isAppReady) {
-          log('[Screenshot Helper] Waiting for app to be ready...');
           let attempts = 0;
           while (!isAppReady && attempts < 20) {
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -125,7 +123,6 @@ const SCREENSHOT_HELPER_SCRIPT = `
 
         // Dynamically import html2canvas
         if (!window.html2canvas) {
-          log('[Screenshot Helper] Loading html2canvas...');
           const script = document.createElement('script');
           script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
           document.head.appendChild(script);
@@ -138,13 +135,11 @@ const SCREENSHOT_HELPER_SCRIPT = `
           });
         }
 
-        log('[Screenshot Helper] Capturing DOM with html2canvas...');
 
         // Wait a bit more for any animations/renders to complete
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Pre-process images: convert external images to data URLs to avoid CORS issues
-        log('[Screenshot Helper] Pre-processing external images...');
         const externalImages = Array.from(document.querySelectorAll('img')).filter(img => {
           const src = img.getAttribute('src') || '';
           return src.startsWith('http') && !src.includes(window.location.hostname);
@@ -166,9 +161,7 @@ const SCREENSHOT_HELPER_SCRIPT = `
               reader.readAsDataURL(blob);
             });
             imageCache.set(src, dataUrl);
-            log('[Screenshot Helper] Converted external image to data URL:', src);
           } catch (err) {
-            log('[Screenshot Helper] Failed to convert image, will use placeholder:', src);
             imageCache.set(src, null); // Mark as failed
           }
         }
@@ -187,8 +180,7 @@ const SCREENSHOT_HELPER_SCRIPT = `
           windowWidth: 1280,
           windowHeight: 720,
           onclone: (clonedDoc) => {
-            log('[Screenshot Helper] Document cloned, replacing external images...');
-
+            
             // Replace external images with data URLs or placeholders
             const images = clonedDoc.querySelectorAll('img');
             let replacedCount = 0;
@@ -220,8 +212,7 @@ const SCREENSHOT_HELPER_SCRIPT = `
               }
             });
 
-            log('[Screenshot Helper] Images replaced:', replacedCount, 'Placeholders:', placeholderCount);
-          }
+           }
         });
 
         const dataUrl = canvas.toDataURL('image/png');
@@ -231,11 +222,7 @@ const SCREENSHOT_HELPER_SCRIPT = `
           throw new Error('Canvas has no dimensions');
         }
 
-        log('[Screenshot Helper] Capture successful:', {
-          width: canvas.width,
-          height: canvas.height,
-          dataLength: dataUrl.length
-        });
+        
 
         // Send screenshot back to parent
         window.parent.postMessage({
@@ -254,7 +241,7 @@ const SCREENSHOT_HELPER_SCRIPT = `
     }
   });
 
-  log('[Screenshot Helper] Ready');
+
 })();
 `;
 
@@ -263,7 +250,6 @@ const SCREENSHOT_HELPER_SCRIPT = `
  */
 const VISUAL_EDITOR_SCRIPT = `
 (function() {
-  console.log('[VisualEditor] Helper script initialized');
   let isVisualMode = false;
   let selectedElement = null;
   let hoveredElement = null;
@@ -283,7 +269,6 @@ const VISUAL_EDITOR_SCRIPT = `
 
     if (type === 'visual-editor:toggle-mode') {
       isVisualMode = enabled;
-      console.log('[VisualEditor] Mode toggled:', isVisualMode);
       if (isVisualMode) {
         document.body.classList.add('visual-editor-mode');
       } else {
@@ -292,7 +277,6 @@ const VISUAL_EDITOR_SCRIPT = `
       }
     } else if (type === 'visual-editor:update-style') {
       if (selectedElement) {
-        console.log('[VisualEditor] Updating style:', property, value);
         selectedElement.style[property] = value;
       }
     }
@@ -396,8 +380,7 @@ const VISUAL_EDITOR_SCRIPT = `
       }
     });
 
-    console.log('[VisualEditor] Selected:', tagName, elementId, selector);
-
+    
     // Helper to find React Fiber
     const getReactFiber = (el) => {
       for (const key in el) {
@@ -421,7 +404,6 @@ const VISUAL_EDITOR_SCRIPT = `
     };
 
     const source = getSource(selectedElement);
-    console.log('[VisualEditor] Source:', source);
 
     // Send selection to parent
     window.parent.postMessage({
