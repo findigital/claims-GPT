@@ -4,3 +4,4 @@
 backend/projects/*
 .idea/*
 backend/dlovable-firebase-adminsdk-fbsvc-33ee906aab.json
+.env
